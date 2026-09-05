@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:racette:hcf:task:1",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "hcf.task/1"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "kind": {
+      "enum": [
+        "summarize_evidence",
+        "challenge_claims"
+      ]
+    },
+    "data_classification": {
+      "enum": [
+        "synthetic",
+        "public_reviewed",
+        "private_reviewed"
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "const": "artifact_only"
+        },
+        "tools": {
+          "const": false
+        },
+        "external_network": {
+          "const": false
+        },
+        "cloud_fallback": {
+          "const": false
+        }
+      },
+      "required": [
+        "mode",
+        "tools",
+        "external_network",
+        "cloud_fallback"
+      ]
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_model_calls": {
+          "const": 1
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 120
+        },
+        "context_tokens": {
+          "type": "integer",
+          "minimum": 512,
+          "maximum": 4096
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 64,
+          "maximum": 768
+        }
+      },
+      "required": [
+        "max_model_calls",
+        "timeout_seconds",
+        "context_tokens",
+        "output_tokens"
+      ]
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "kind": {
+            "enum": [
+              "pr_snapshot",
+              "commit_snapshot",
+              "ci_record",
+              "test_record",
+              "synthetic_text"
+            ]
+          },
+          "revision": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "source_id",
+          "kind",
+          "revision",
+          "content",
+          "sha256"
+        ]
+      }
+    },
+    "proposed_claims": {
+      "type": "array",
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "claim_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 400
+          }
+        },
+        "required": [
+          "claim_id",
+          "text"
+        ]
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "task_id",
+    "kind",
+    "data_classification",
+    "policy",
+    "budget",
+    "sources",
+    "proposed_claims"
+  ]
+}
