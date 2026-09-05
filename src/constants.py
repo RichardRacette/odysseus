@@ -10,6 +10,10 @@ APP_VERSION = "1.0.3"
 BASE_DIR = os.path.join(get_app_root(), "")
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 DATA_DIR = os.getenv("ODYSSEUS_DATA_DIR", get_default_data_dir())
+# The standalone worker requires an explicitly configured absolute data root;
+# importing it must never create a default queue in a source checkout.
+ARTIFACT_WORKER_DIR = (os.path.join(DATA_DIR, 'artifact-worker')
+                       if os.getenv('ODYSSEUS_DATA_DIR') and os.path.isabs(DATA_DIR) else None)
 
 # Data file paths
 # Single source of truth: every persisted file/dir lives under DATA_DIR, which
