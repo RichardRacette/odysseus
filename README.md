@@ -9,6 +9,7 @@
 <p align="center">
   <a href="#quick-start">Quick Start</a> ·
   <a href="website/setup.md">Setup Guide</a> ·
+  <a href="HANDOFF.md">Fork Handoff</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
   <a href="ROADMAP.md">Roadmap</a>
 </p>
