@@ -106,6 +106,7 @@ async function _syncLibrary(options = {}) {
           const updates = {
             query: item.query || existing.query,
             status: 'done',
+            partial: !!item.partial,
             elapsed: elapsed || existing.elapsed || 0,
             sourceCount: item.source_count || existing.sourceCount || 0,
             thumbnail: item.thumbnail || existing.thumbnail || '',
@@ -123,6 +124,7 @@ async function _syncLibrary(options = {}) {
         }
         _jobs.push({
           id: item.id, query: item.query, status: 'done',
+          partial: !!item.partial,
           progress: {}, startedAt: (item.started_at || 0) * 1000,
           elapsed, result: null, sources: null, findings: null,
           sourceCount: item.source_count || 0,
@@ -313,6 +315,7 @@ function _connectStream(job) {
       const d = JSON.parse(evt.data);
       if (d.status === 'not_found') { _finishJob(job, 'error'); return; }
       job.progress = d;
+      job.partial = !!d.partial;
       if (d.model && !job.modelName) job.modelName = d.model;
       if (d.final) {
         if (d.error) job.errorMsg = d.error;
@@ -337,6 +340,7 @@ async function _pollFallback(job) {
     if (!res.ok) { _finishJob(job, 'error'); return; }
     const d = await res.json();
     job.progress = d.progress || {};
+    job.partial = !!d.partial;
     if (d.avg_duration) job.avgDuration = d.avg_duration;
     if (d.status !== 'running') {
       _finishJob(job, d.status === 'done' ? 'done' : 'error');
@@ -354,7 +358,7 @@ function _finishJob(job, status) {
   job.elapsed = Date.now() - (job.startedAt || Date.now());
   if (status === 'done') {
     if ('Notification' in window && Notification.permission === 'granted') {
-      try { new Notification('Research Complete', { body: job.query.slice(0, 80) }); } catch {}
+      try { new Notification(job.partial ? 'Partial Research Saved' : 'Research Complete', { body: job.query.slice(0, 80) }); } catch {}
     }
     if (_onCompleteCb) _onCompleteCb(job);
   }
@@ -372,6 +376,7 @@ async function _fetchResult(job) {
     if (!res.ok) return;
     const d = await res.json();
     job.result = d.result;
+    job.partial = !!d.partial;
     job.sources = d.sources;
     job.findings = d.raw_findings;
     if (d.category && !job.category) job.category = d.category;

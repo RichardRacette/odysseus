@@ -23,7 +23,8 @@ quiet_logs()
 import argparse, json, logging, os, sys
 from pathlib import Path
 
-_DATA_DIR = _REPO_ROOT / "data" / "deep_research"
+from src.constants import DEEP_RESEARCH_DIR
+_DATA_DIR = Path(DEEP_RESEARCH_DIR)
 
 # The CLI's --status takes the user-facing label "complete", but the writer
 # in services/research/research_handler.py stores `status="done"` when a run
@@ -72,7 +73,7 @@ def _summarize(rp_id: str, data: dict) -> dict:
         "id": rp_id,
         "query": _preview_text(data.get("query")),
         "category": data.get("category") or "",
-        "status": data.get("status") or "",
+        "status": "partial" if data.get("partial") else (data.get("status") or ""),
         "started_at": data.get("started_at") or "",
         "completed_at": data.get("completed_at") or "",
         "sources": len(data.get("sources") or []),
@@ -90,7 +91,7 @@ def cmd_list(args):
         data = _load_path(path)
         if data is None:
             continue
-        if args.status and not _status_matches(data.get("status"), args.status):
+        if args.status and not _status_matches("partial" if data.get("partial") else data.get("status"), args.status):
             continue
         out.append(_summarize(rp_id, data))
     out.sort(key=lambda r: r.get("started_at") or "", reverse=True)
@@ -160,7 +161,7 @@ def _build_parser():
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pl = sub.add_parser("list", parents=[common])
-    pl.add_argument("--status", choices=["complete", "running", "cancelled", "error"])
+    pl.add_argument("--status", choices=["complete", "partial", "running", "cancelled", "error"])
     pl.add_argument("--limit", type=int, default=50)
     pl.set_defaults(func=cmd_list)
 

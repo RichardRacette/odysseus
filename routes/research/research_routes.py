@@ -396,6 +396,7 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
                     "category": d.get("category") or "",
                     "source_count": len(sources),
                     "status": d.get("status", "done"),
+                    "partial": bool(d.get("partial")),
                     "duration": d.get("stats", {}).get("Duration", ""),
                     "rounds": d.get("stats", {}).get("Rounds", ""),
                     "started_at": d.get("started_at", 0),
@@ -596,7 +597,7 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
                     last_progress = progress
                     yield f"data: {json.dumps({**progress, 'status': st})}\n\n"
                 if st != "running":
-                    final = {'status': st, 'final': True}
+                    final = {'status': st, 'final': True, 'partial': bool(status.get('partial'))}
                     task = research_handler._active_tasks.get(session_id, {})
                     if st == "error" and task.get("result"):
                         final['error'] = str(task["result"])[:500]
@@ -623,6 +624,7 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
                 d = json.loads(p.read_text(encoding="utf-8"))
                 return {
                     "result": d.get("result", ""),
+                    "partial": bool(d.get("partial")),
                     "sources": d.get("sources", []),
                     "raw_findings": d.get("raw_findings", []),
                     "category": d.get("category") or "",
@@ -630,7 +632,8 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
             raise HTTPException(404, "No research result available")
         sources = research_handler.get_sources(session_id) or []
         raw_findings = research_handler.get_raw_findings(session_id) or []
-        return {"result": result, "sources": sources, "raw_findings": raw_findings, "category": ""}
+        status = research_handler.get_status(session_id) or {}
+        return {"result": result, "sources": sources, "raw_findings": raw_findings, "category": "", "partial": bool(status.get("partial"))}
 
     @router.post("/api/research/spinoff/{session_id}")
     async def research_spinoff(session_id: str, request: Request):

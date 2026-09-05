@@ -1,5 +1,84 @@
 # Research timeout checkpoint verification
 
+## Round 2 application recovery (2026-09-05)
+
+The sections below this update retain the historical Round 1 measurements.
+Round 2 preserves that commit and its original nine tests, then closes the
+application recovery gaps in a dependent review unit.
+
+- Each completed extraction is checkpointed before sibling work finishes.
+- Production search/fetch run through disposable workers. Cancellation and
+  deadlines kill and reap them before recovery publishes anything.
+- Research uses a monotonic budget, checks cancellation between phases and
+  after final generation, and reports measured elapsed time on timeout.
+- Save preparation uses `core.atomic_io.atomic_write_json` in a disposable
+  worker, targeting a unique sibling candidate. Normal saves have at most the
+  remaining outer budget, capped at ten seconds. Deadline/dependency recovery
+  has an explicit **maximum ten-second checkpoint grace**, with no model or
+  source work. Only the current, uncancelled task with an unchanged owner may
+  atomically replace the report after preparation. A failed preparation leaves
+  the prior report intact. The final filesystem rename is the linearization
+  point; this is not a guarantee against a hung kernel/filesystem.
+- Partial state survives consumption/reload on status, result-peek, report,
+  research-library and CLI surfaces. Legacy consumed complete results retain
+  their status-404 behavior; result-peek and the report remain available.
+- Existing chat continuation loads owner-scoped saved evidence, deduplicates
+  source URLs, skips completed source fetches and receives a fresh finite
+  budget (1800 seconds if the normal outer setting is unlimited). Planning
+  queries use the explicit new question without prior private report text;
+  synthesis treats prior/fetched text as untrusted evidence.
+
+Verification: **271 unique focused tests pass**, including the unchanged nine,
+new failure variations, canonical subprocess search/fetch through a loopback
+provider, blocked-fsync cancellation/deadline, owner rename during preparation,
+ownership/routes, research CLI, visual reports, atomic I/O and prompt security.
+This is not the full application suite. Run the core regressions with:
+
+```sh
+python -B -m pytest -q tests/test_research_checkpoints.py tests/test_research_recovery.py -p no:cacheprovider
+```
+
+The session's broader test manifest and isolated staging scripts are retained
+in the operator handoff. All diagnostics are captured by the runner, which
+emits allowlisted totals and hashes. The original nine-test file and fixture
+are byte-for-byte unchanged.
+
+Actual application observation: `LOCAL_MODEL_WITH_FIXTURE_SOURCES`. Fresh
+synthetic SQLite/data storage, normal authentication and canonical chat/report
+routes were used; unrelated startup schedulers were disabled in staging.
+Only loopback staging and the existing local model endpoint were reachable.
+No cloud fallback, real web source, download or live installation data was used.
+The existing `gemma3:4b` (Q4_K_M, digest
+`a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a`)
+ran at temperature 0, at most 1024 output tokens per call, one extraction at a
+time, two research rounds, and a 60-second budget.
+
+The deliberately stalled first run saved an explicit partial report at 60.0
+seconds with one cited synthetic source (six model calls, four searches, one
+fetch). After process restart, the report and partial badge were visible and
+status returned 200. Explicit continuation preserved that source and lineage,
+made six model calls and six fixture searches with **zero duplicate fetches**,
+and completed in 23.7 seconds of research / 29.75 seconds of handler elapsed
+time. The result remained available after consumption. The generated text ends
+abruptly at the demonstration's token limit and includes generic `[research]`
+markers alongside the preserved source link: this verifies recovery and
+continuation, not comprehensive report quality. Screenshots and exact synthetic
+inputs are retained in the operator handoff.
+
+The authorized source/startup inspection still did not establish the operator's
+outbound privacy gate. Search-provider dispatch and SSRF protections are not
+proof of that gate. **External research remains blocked.** No public live
+example, installed-data restore or deployment is claimed.
+
+Review the checkpoint prerequisite first, then this dependent recovery change.
+No schema migration is required. Rollback is a normal reviewed revert of the
+dependent change followed by the prerequisite if needed; preserve saved reports.
+Operator: open a partial report in Deep Research, then explicitly request
+continuation in its existing chat with a finite budget once the applicable
+outbound privacy gate has been verified.
+
+## Historical Round 1 record
+
 Verified offline on 2026-09-05 against fork `dev` at
 `c2535d21c4b97c11fe29e74cdb163354a92da35c`.
 

@@ -988,7 +988,9 @@ function _buildJobCard(job) {
     // 0 sources = the research couldn't gather/extract anything — flag it.
     const failed = srcCount === 0;
     if (failed) card.classList.add('research-job-failed');
-    const doneBadge = failed
+    const doneBadge = job.partial
+      ? `<span class="research-cat-badge">partial</span>`
+      : failed
       ? `<span class="research-cat-badge research-cat-failed">${_cancelIcon} no results</span>`
       : (job.category ? `<span class="research-cat-badge">${_esc(job.category)}</span>` : `<span class="research-cat-badge research-cat-standard">standard</span>`);
     const failNote = failed
