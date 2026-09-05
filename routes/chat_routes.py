@@ -1631,7 +1631,7 @@ def setup_chat_routes(
                 # Skip in compare mode — each pane is a fresh session, so every one would
                 # ask clarifying questions and the user would have to answer each pane
                 # separately, breaking the parallel comparison.
-                _prior_json = research_handler._get_session_json(session)
+                _prior_json = research_handler._get_session_json(session, owner=_user)
                 _history_len = len(sess.history) if hasattr(sess, 'history') else 0
                 _is_first_research = not _prior_json and _history_len <= 2 and not compare_mode
 
@@ -1679,9 +1679,9 @@ def setup_chat_routes(
                     _prior_report = ""
                     _prior_findings = None
                     _prior_urls = None
-                    _prior_json = research_handler._get_session_json(session)
+                    _prior_json = research_handler._get_session_json(session, owner=_user)
                     if _prior_json:
-                        _prior_report = _prior_json.get("raw_report", "")
+                        _prior_report = _prior_json.get("raw_report") or _prior_json.get("result", "")
                         _prior_findings = _prior_json.get("raw_findings")
                         _src_urls = {s.get("url", "") for s in (_prior_json.get("sources") or []) if s.get("url")}
                         _prior_urls = _src_urls if _src_urls else None
@@ -1689,7 +1689,9 @@ def setup_chat_routes(
                             logger.info(f"Continuing research for session {session} with {len(_src_urls)} prior URLs")
 
                     # Synthesize conversation into a focused research query
-                    _research_query = await research_handler.synthesize_query(
+                    # Explicit continuation authorizes this follow-up question,
+                    # not exporting earlier private conversation/report context.
+                    _research_query = message if _prior_report else await research_handler.synthesize_query(
                         sess, message, _r_ep, _r_model, _r_headers,
                     )
                     logger.info(f"Research query: {_research_query[:120]}")

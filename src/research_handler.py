@@ -10,13 +10,16 @@ Includes a task registry so research survives page refreshes and can be cancelle
 import asyncio
 import json
 import logging
+import os
 import re
 import time
+import uuid
 from pathlib import Path
 from typing import Optional, Dict
 
 from src.research_utils import strip_thinking, is_low_quality
 from src.constants import DEEP_RESEARCH_DIR
+from core.atomic_io import atomic_write_json
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +290,18 @@ class ResearchHandler:
                     maximum=86400,
                 )
 
+        saved = self._get_session_json(session_id)
+        if _research_json_path(session_id).exists() and saved is None:
+            raise ValueError("Existing research is unreadable; preserve it before starting another run")
+        if saved and saved.get("owner", "") != (owner or ""):
+            raise ValueError("Research owner mismatch")
+        if saved and saved.get("status") in ("done", "complete") and not prior_report:
+            raise ValueError("Existing research requires explicit continuation")
+        # A continuation always has a fresh finite wall-clock budget, even if
+        # the general operator setting disables the normal run deadline.
+        if prior_report and hard_timeout is None:
+            hard_timeout = 1800
+
         # Cancel any existing research for this session
         if session_id in self._active_tasks:
             existing = self._active_tasks[session_id]
@@ -294,6 +309,11 @@ class ResearchHandler:
                 self.cancel_research(session_id)
 
         entry = {
+            "partial": False,
+            "completion_reason": "completed",
+            "continued_from": saved.get("completed_at") if saved and prior_report else None,
+            "hard_timeout": hard_timeout,
+            "deadline": time.monotonic() + hard_timeout if hard_timeout is not None else None,
             "task": None,
             "researcher": None,
             "query": query,
@@ -307,14 +327,18 @@ class ResearchHandler:
         }
         self._active_tasks[session_id] = entry
 
+        def can_publish():
+            return self._active_tasks.get(session_id) is entry and entry["status"] != "cancelled"
+
         def on_progress(event):
-            entry["progress"] = event
+            if can_publish():
+                entry["progress"] = event
 
         _completed = False
 
         def _guarded_complete(*args, **kwargs):
             nonlocal _completed
-            if _completed:
+            if _completed or not can_publish() or entry.get("persistence_error"):
                 return
             _completed = True
             if on_complete:
@@ -342,9 +366,12 @@ class ResearchHandler:
                     ),
                     timeout=hard_timeout,
                 )
+                if not can_publish():
+                    return
                 entry["result"] = result
                 entry["status"] = "done"
-                self._save_result(session_id, entry)
+                remaining = entry["deadline"] - time.monotonic() if entry["deadline"] is not None else 10
+                await self._save_result_async(session_id, entry, timeout=min(10, max(0, remaining)))
                 # Persist to DB via callback (ensures result survives even if SSE disconnected)
                 try:
                     sources = entry.get("sources", [])
@@ -354,6 +381,11 @@ class ResearchHandler:
                 except Exception as cb_err:
                     logger.error(f"on_complete callback failed: {cb_err}")
             except asyncio.TimeoutError:
+                if not can_publish():
+                    return
+                elapsed = max(0.0, time.time() - entry["started_at"])
+                entry["partial"] = True
+                entry["completion_reason"] = "timeout"
                 logger.error(f"Research hard timeout ({hard_timeout}s) for session {session_id}")
                 entry["status"] = "error"
                 # If we have partial results, save what we have
@@ -363,16 +395,16 @@ class ResearchHandler:
                     partial_report = researcher._fallback_report(query, researcher.findings)
                 if partial_report:
                     partial_report = (
-                        f"_Partial research: the run timed out after {hard_timeout}s. "
+                        f"_Partial research: the run timed out after {elapsed:.1f}s. "
                         "The evidence below may be incomplete._\n\n" + partial_report
                     )
                     entry["raw_report"] = strip_thinking(partial_report)
                     entry["stats"] = researcher.get_stats()
                     entry["result"] = self._format_research_report(
-                        query, partial_report, entry["stats"], hard_timeout,
+                        query, partial_report, entry["stats"], elapsed,
                     )
                     entry["status"] = "done"
-                    self._save_result(session_id, entry)
+                    await self._save_result_async(session_id, entry)
                     try:
                         sources = self._extract_sources(researcher.findings) if researcher.findings else []
                         findings = self._extract_raw_findings(researcher.findings) if researcher.findings else []
@@ -380,32 +412,40 @@ class ResearchHandler:
                     except Exception as e:
                         logger.warning(f"on_complete callback failed in timeout branch: {e}")
                 else:
-                    entry["result"] = f"Research timed out after {hard_timeout}s. The model may be too slow for deep research."
-                on_progress({"phase": "error", "message": f"Research timed out after {hard_timeout}s"})
+                    entry["result"] = f"Research timed out after {elapsed:.1f}s. The model may be too slow for deep research."
+                on_progress({"phase": "partial" if entry["status"] == "done" else "error", "message": "Partial report saved after deadline" if entry["status"] == "done" else "Research deadline reached; no report saved"})
             except asyncio.CancelledError:
                 entry["status"] = "cancelled"
                 raise
             except Exception as e:
-                logger.error(f"Background research failed: {e}", exc_info=True)
+                if not can_publish():
+                    return
+                entry["partial"] = True
+                entry["completion_reason"] = "dependency_failure"
+                logger.error("Background research dependency failed")
                 # Preserve partial findings if available (mirrors timeout branch)
                 researcher = entry.get("researcher")
-                if researcher and researcher.evolving_report:
+                if researcher and (researcher.evolving_report or researcher.findings):
+                    partial = "_Partial research: a dependency failed. Evidence may be incomplete._\n\n" + (
+                        researcher.evolving_report or researcher._fallback_report(query, researcher.findings))
+                    entry["raw_report"] = strip_thinking(partial)
+                    entry["stats"] = researcher.get_stats()
                     _elapsed = time.time() - entry["started_at"]
                     entry["result"] = self._format_research_report(
-                        query, researcher.evolving_report,
+                        query, partial,
                         researcher.get_stats(), _elapsed,
                     )
                     entry["status"] = "done"
-                    self._save_result(session_id, entry)
+                    await self._save_result_async(session_id, entry)
                     try:
                         sources = self._extract_sources(researcher.findings) if researcher.findings else []
                         findings = self._extract_raw_findings(researcher.findings) if researcher.findings else []
                         _guarded_complete(session_id, entry["result"], sources, findings)
                     except Exception as cb_err:
                         logger.warning(f"on_complete callback failed in error branch: {cb_err}")
-                    on_progress({"phase": "warning", "message": f"Research finished with errors — partial results saved ({_elapsed:.0f}s elapsed)"})
+                    on_progress({"phase": "partial" if entry["status"] == "done" else "error", "message": "Partial report saved after dependency failure" if entry["status"] == "done" else "Research report could not be saved"})
                 else:
-                    entry["result"] = str(e)
+                    entry["result"] = "Research dependency unavailable; no report saved."
                     entry["status"] = "error"
 
         task = asyncio.create_task(_run())
@@ -418,6 +458,9 @@ class ResearchHandler:
             entry = self._active_tasks[session_id]
             result = {
                 "status": entry["status"],
+                "partial": entry.get("partial", False),
+                "completion_reason": entry.get("completion_reason"),
+                "persistence_error": entry.get("persistence_error", False),
                 "progress": entry["progress"],
                 "query": entry["query"],
                 "started_at": entry["started_at"],
@@ -440,10 +483,12 @@ class ResearchHandler:
         if path.exists():
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
-                if data.get("consumed"):
+                if data.get("consumed") and not data.get("partial"):
                     return None
                 return {
                     "status": data.get("status", "done"),
+                    "partial": data.get("partial", False),
+                    "completion_reason": data.get("completion_reason"),
                     "progress": {},
                     "query": data.get("query", ""),
                     "started_at": data.get("started_at", 0),
@@ -602,58 +647,111 @@ class ResearchHandler:
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
                 data["consumed"] = True
-                path.write_text(json.dumps(data), encoding="utf-8")
+                atomic_write_json(str(path), data)
             except Exception:
                 pass
 
-    def _save_result(self, session_id: str, entry: dict):
+    async def _save_result_async(self, session_id: str, entry: dict, timeout: float = 10):
+        """Bound serialization/fsync; only this task may commit the prepared file.
+
+        Timeout recovery gets at most ten seconds for checkpoint persistence,
+        never another inference/search budget. A killed child knows only a
+        unique candidate path and cannot replace the previously saved report.
+        """
+        from src.research_io import run_research_io
+        path = _research_json_path(session_id)
+        if path is None:
+            return False
+        candidate = path.with_name(path.name + '.pending-' + uuid.uuid4().hex)
+        data = self._result_data(entry)
+        entry['status'] = 'running'  # cancellation/replacement remains available while saving
+        try:
+            if timeout <= 0:
+                raise TimeoutError
+            await run_research_io('save', [str(candidate), data], timeout)
+            if self._active_tasks.get(session_id) is not entry or entry['status'] == 'cancelled':
+                return False
+            if data['owner'] != entry.get('owner', ''):
+                raise ValueError('Research owner changed during save')
+            entry['status'] = 'done'
+            return self._save_result(session_id, entry, prepared_path=candidate)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self._save_failed(entry)
+            return False
+        finally:
+            # The worker has been reaped before cleanup; these are only our
+            # uniquely named sibling candidates, never a prior report.
+            for temporary in [candidate, *candidate.parent.glob(candidate.name + '.tmp.*')]:
+                try: temporary.unlink()
+                except OSError: pass
+
+    def _result_data(self, entry: dict):
+        researcher = entry.get('researcher')
+        findings = researcher.findings if researcher and researcher.findings else []
+        sources = self._extract_sources(findings)
+        entry['sources'] = sources
+        return {
+            'query': entry['query'], 'partial': entry.get('partial', False),
+            'completion_reason': entry.get('completion_reason', 'completed'),
+            'continued_from': entry.get('continued_from'), 'status': entry['status'],
+            'result': entry['result'], 'raw_report': entry.get('raw_report', ''),
+            'sources': sources, 'raw_findings': self._extract_raw_findings(findings),
+            'stats': entry.get('stats'), 'category': entry.get('category'),
+            'started_at': entry['started_at'], 'completed_at': time.time(),
+            'owner': entry.get('owner', ''),
+        }
+
+    @staticmethod
+    def _save_failed(entry):
+        entry.update(status='error', persistence_error=True, completion_reason='persistence_failure',
+                     result='Research report could not be saved. The previous saved report is unchanged.')
+        logger.error('Research persistence failed')
+
+    def _save_result(self, session_id: str, entry: dict, prepared_path=None):
         """Persist completed research result to disk."""
         try:
             path = _research_json_path(session_id)
             if path is None:
                 logger.error("Refusing to save research result for invalid session_id: %r", session_id)
                 return
-            # Extract and cache sources + raw findings
-            sources = []
-            raw_findings = []
-            researcher = entry.get("researcher")
-            if researcher and researcher.findings:
-                sources = self._extract_sources(researcher.findings)
-                raw_findings = self._extract_raw_findings(researcher.findings)
-            entry["sources"] = sources
-
-            data = {
-                "query": entry["query"],
-                "status": entry["status"],
-                "result": entry["result"],
-                "raw_report": entry.get("raw_report", ""),
-                "sources": sources,
-                "raw_findings": raw_findings,
-                "stats": entry.get("stats"),
-                "category": entry.get("category"),
-                "started_at": entry["started_at"],
-                "completed_at": time.time(),
-                # SECURITY: stamp owner so route handlers can filter by user.
-                "owner": entry.get("owner", ""),
-            }
-            path.write_text(json.dumps(data), encoding="utf-8")
-            logger.info(f"Research result saved to {path}")
+            data = self._result_data(entry) if prepared_path is None else None
+            current = self._active_tasks.get(session_id)
+            if current is not None and (current is not entry or entry["status"] == "cancelled"):
+                return False
+            if prepared_path is None:
+                atomic_write_json(str(path), data)
+            else:
+                os.replace(prepared_path, path)
+            logger.info("Research result saved")
             try:
                 from src.event_bus import fire_event
                 fire_event("research_completed", entry.get("owner") or None)
             except Exception:
                 logger.debug("research_completed event dispatch failed", exc_info=True)
-        except Exception as e:
-            logger.error(f"Failed to save research result: {e}")
+            return True
+        except Exception:
+            self._save_failed(entry)
+            return False
 
-    def _get_session_json(self, session_id: str) -> Optional[dict]:
+    def _get_session_json(self, session_id: str, owner: str = None) -> Optional[dict]:
         """Load the saved research JSON for a session, if it exists."""
         path = _research_json_path(session_id)
         if path is None:
             return None
         if path.exists():
             try:
-                return json.loads(path.read_text(encoding="utf-8"))
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(data, dict) or (owner is not None and data.get("owner") != owner):
+                    return None
+                if not isinstance(data.get("raw_report", ""), str) or not isinstance(data.get("result", ""), str):
+                    return None
+                for field in ("raw_findings", "sources"):
+                    rows = data.get(field) or []
+                    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+                        return None
+                return data
             except Exception:
                 pass
         return None
@@ -863,7 +961,9 @@ class ResearchHandler:
             return self._format_research_report(query, report, stats, elapsed)
 
         except Exception as e:
-            logger.error(f"DeepResearcher failed: {e}", exc_info=True)
+            logger.error("DeepResearcher failed")
+            if _task_entry is not None:
+                raise
             return await self._fallback_research(query, llm_endpoint, llm_model, max_time, str(e))
 
     async def _fallback_research(
