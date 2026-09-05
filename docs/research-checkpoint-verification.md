@@ -203,3 +203,26 @@ the normal review process; it has no schema or data migration.
 Next action: identify the operator privacy-gate definition and sanitized frozen
 benchmark location, then plan local acceptance through that existing boundary.
 Do not run real outbound research until the gate is understood and verified.
+# Round 3 streaming boundary follow-up
+
+A real child emitting 4 MiB plus one byte and then blocking reproduced the
+post-`communicate()` size-check gap: the previous implementation waited for its
+deadline instead of rejecting overflow. The helper now enforces the retained
+stdout limit incrementally, writes stdin concurrently, kills overflowing or
+cancelled children, drains bounded chunks and reaps them even after repeated
+cancellation. Worker import diagnostics go to the null device instead of an
+unbounded StringIO. This bounds retained stdout in the parent; it is not a total
+process-memory limit on source providers, parsing or JSON serialization.
+
+The focused recovery set passes 39 cases, including the unchanged frozen nine,
+owner/save/cancellation coverage, full-duplex exact-limit output, overflow before
+EOF and repeated cancellation of a real child. The separate historical sets are
+406 (Round 1) and 271 (Round 2): 229 shared identities, 42 added in Round 2 and
+177 not selected in Round 2. These counts must not be substituted or summed.
+
+The existing research model abstraction still returns text without completion
+metadata. Its report-quality/truncation limitation remains unresolved. The
+independent artifact worker pilot uses native provider metadata and refuses
+truncated/unknown completion; it does not silently change existing research
+callers. External research remains blocked pending verification of the running
+operator's outbound privacy gate.
