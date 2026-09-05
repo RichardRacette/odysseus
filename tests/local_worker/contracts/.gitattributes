@@ -1,0 +1,2 @@
+# Contract identity is defined over exact bytes, including on Windows clones.
+*.json -text
