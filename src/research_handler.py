@@ -358,10 +358,18 @@ class ResearchHandler:
                 entry["status"] = "error"
                 # If we have partial results, save what we have
                 researcher = entry.get("researcher")
-                if researcher and researcher.evolving_report:
+                partial_report = researcher.evolving_report if researcher else ""
+                if researcher and not partial_report and researcher.findings:
+                    partial_report = researcher._fallback_report(query, researcher.findings)
+                if partial_report:
+                    partial_report = (
+                        f"_Partial research: the run timed out after {hard_timeout}s. "
+                        "The evidence below may be incomplete._\n\n" + partial_report
+                    )
+                    entry["raw_report"] = strip_thinking(partial_report)
+                    entry["stats"] = researcher.get_stats()
                     entry["result"] = self._format_research_report(
-                        query, researcher.evolving_report,
-                        researcher.get_stats(), hard_timeout,
+                        query, partial_report, entry["stats"], hard_timeout,
                     )
                     entry["status"] = "done"
                     self._save_result(session_id, entry)
