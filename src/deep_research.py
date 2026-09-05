@@ -267,6 +267,10 @@ class DeepResearcher:
         self._start_time = time.time()
         findings: List[Dict] = list(prior_findings) if prior_findings else []
         report = prior_report or ""
+        # Publish continuation state before the first await: a hard timeout
+        # during planning must not discard the evidence supplied by the caller.
+        self.findings = findings
+        self.evolving_report = report
 
         # PLAN: Analyze the question and create a research strategy
         if not prior_report:
@@ -341,6 +345,8 @@ class DeepResearcher:
                            total_sources=len(self.urls_fetched),
                            total_findings=len(findings))
                 report = await self._synthesize(question, findings, report)
+                # The handler can interrupt a later round at any await.
+                self.evolving_report = report
 
             # DECIDE
             if round_num >= self.min_rounds:
