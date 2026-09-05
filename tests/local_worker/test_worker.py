@@ -14,6 +14,8 @@ from src.local_worker.contract import Contract, Refused, decode, sha
 from src.local_worker.cli import perform, entry
 from src.local_worker.runtime import Ollama, endpoint, prompt
 
+CONTRACT_DIR=Path(os.environ.get('HCF_CONTRACT_DIR',Path(__file__).resolve().parent/'contracts'))
+
 
 def packet(kind='challenge_claims'):
     content='Synthetic feature branch is open. Its author reports two passing tests; no execution capture is supplied.'
@@ -49,12 +51,12 @@ class Fake:
 
 class ContractTests(unittest.TestCase):
     @classmethod
-    def setUpClass(cls): cls.contract=Contract(os.environ['HCF_CONTRACT_DIR'])
+    def setUpClass(cls): cls.contract=Contract(CONTRACT_DIR)
 
     def test_schema_hash_tampering(self):
         with tempfile.TemporaryDirectory() as directory:
             for name in ['task.schema.json','result.schema.json']:
-                Path(directory,name).write_bytes(Path(os.environ['HCF_CONTRACT_DIR'],name).read_bytes()+b' ')
+                Path(directory,name).write_bytes((CONTRACT_DIR/name).read_bytes()+b' ')
             with self.assertRaises(Refused): Contract(directory)
 
     def test_valid_task(self): self.contract.task(json.dumps(packet()).encode())
@@ -109,7 +111,7 @@ class ContractTests(unittest.TestCase):
 
 class WorkerTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.contract=Contract(os.environ['HCF_CONTRACT_DIR'])
+        self.contract=Contract(CONTRACT_DIR)
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.blob=json.dumps(packet()).encode()
 

@@ -8,7 +8,9 @@ This experiment is independent of the research recovery PR stack.
 Python 3.11+ and the existing `httpx` dependency are required. Supply the separately
 distributed hcf/1 contract directory; its task and result schemas are checked
 against exact SHA-256 digests before use. The launch kit and operator packets are
-not published with this change. The validator implements only the keywords in
+not published with this change. Only the exact task/result wire schemas are
+included under the tests' `contracts` directory, so normal CI is self-contained.
+The validator implements only the keywords in
 those pinned schemas and rejects unsupported schemas without resolving references.
 
 Reuse `OLLAMA_BASE_URL` (or legacy `OLLAMA_URL`) and an explicitly configured
@@ -64,10 +66,11 @@ promise recovery from arbitrary storage failure.
 Run offline checks with the supplied unchanged contract:
 
 ```sh
-HCF_CONTRACT_DIR=CONTRACT_DIR python3 -B -m unittest discover -s tests/local_worker
+python3 -B -m unittest discover -s tests/local_worker
 ```
 
-The shared contract examples are a separate 20-test set, not hardware or model
+Set `HCF_CONTRACT_DIR` to compare against the original supplied schemas. The
+shared contract examples are a separate 20-test set, not hardware or model
 evidence. Worker tests exercise actual loopback HTTP and the production CLI,
 schema/size/identity failures, cloud-descriptor and redirect refusal, timeout,
 cancellation, concurrency, restart deduplication, journal failures, diagnostic

@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-from test_worker import packet, response
+from test_worker import packet, response, CONTRACT_DIR
 from src.local_worker.contract import Contract
 from src.local_worker.cli import perform
 from src.local_worker.runtime import Ollama
@@ -25,7 +25,7 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
         self.calls=[]; self.remote=False;self.overflow=False;self.redirect=False
         self.server=await asyncio.start_server(self.handle,'127.0.0.1',0)
         self.base='http://127.0.0.1:'+str(self.server.sockets[0].getsockname()[1])
-        self.contract=Contract(os.environ['HCF_CONTRACT_DIR'])
+        self.contract=Contract(CONTRACT_DIR)
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
 
     async def asyncTearDown(self):
@@ -79,7 +79,7 @@ class HTTPTests(unittest.IsolatedAsyncioTestCase):
     async def test_production_cli_and_restart_dedup(self):
         file=Path(self.temp.name,'task.json');file.write_text(json.dumps(http_packet()))
         env=dict(os.environ,OLLAMA_BASE_URL=self.base,ODYSSEUS_DATA_DIR=str(Path(self.temp.name,'queue')),HTTPS_PROXY='http://example.invalid',HTTP_PROXY='http://example.invalid')
-        command=[sys.executable,'-B','scripts/odysseus-local-worker','--task',str(file),'--contract-dir',os.environ['HCF_CONTRACT_DIR'],
+        command=[sys.executable,'-B','scripts/odysseus-local-worker','--task',str(file),'--contract-dir',str(CONTRACT_DIR),
                  '--node','mac' if sys.platform=='darwin' else 'pc','--model','gemma3:4b']
         for _ in range(2):
             child=await asyncio.create_subprocess_exec(*command,env=env,stdout=asyncio.subprocess.PIPE,stderr=asyncio.subprocess.PIPE)
