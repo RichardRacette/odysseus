@@ -46,6 +46,31 @@ class CLITests(unittest.TestCase):
         self.assertNotIn('Traceback', result.stderr)
         self.assertIn('error', result.stderr.lower())
 
+    def test_recovery_commands_report_credential_presence_without_values(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            state, snapshot, restored = (root / name for name in ('state', 'snapshot', 'restored'))
+            initialized = self.run_cli('init', '--state', state)
+            self.assertEqual(initialized.returncode, 0, initialized.stderr)
+            credentials = [path.read_text(encoding='utf-8').strip()
+                           for path in (state / 'secrets').glob('*.token')]
+            self.assertTrue(credentials)
+            for args in (
+                ('snapshot', '--config', state / 'config.json', '--destination', snapshot),
+                ('verify-snapshot', '--snapshot', snapshot),
+                ('restore', '--snapshot', snapshot, '--destination', restored),
+            ):
+                with self.subTest(command=args[0]):
+                    result = self.run_cli(*args)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    report = json.loads(result.stdout)
+                    self.assertIs(report['contains_secrets'], True)
+                    for credential in credentials:
+                        self.assertNotIn(credential, result.stdout + result.stderr)
+            recovery = json.loads((restored / 'recovery' / 'receipt.json').read_text(encoding='utf-8'))
+            self.assertIs(recovery['contains_secrets'], True)
+            self.assertEqual(recovery['credentials_rotated'], len(credentials))
+
     def test_synthetic_demo_runs_http_workers_and_restore(self):
         with tempfile.TemporaryDirectory() as temp:
             result = self.run_cli('demo', '--output', Path(temp).resolve() / 'demo')
