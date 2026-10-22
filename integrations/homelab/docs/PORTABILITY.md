@@ -91,3 +91,20 @@ No schema migration, token rotation, model selection, public exposure or paid
 service is required by this patch. Existing runtime policy and data format are
 preserved. Physical startup, model quality, private connectivity and off-machine
 recovery remain separately observed acceptance outcomes.
+
+## Reconciled rollout source
+
+The continuation combines reviewed portability head
+`48fd378d54fd9bceb5d877e3242d54f0a61a9eb2` with foundation continuation
+`19c0ab8` (Windows bounded process supervision). The earlier local Windows
+correction overlaps initialization cleanup, writable snapshot flush and source
+metadata checks. Those behaviors use the reviewed portability implementation;
+the stronger snapshot regression replaces the duplicate writable-descriptor
+check. Exact CRLF rewrite coverage and the during-read mtime regression remain.
+
+The final descriptor recheck and DNS-free loopback bind are retained. The demo
+regression keeps its original 20-second limit because the startup dependency is
+removed. The Windows supervisor, seven native behavior tests and updated logon
+launcher remain from the foundation continuation. No credentials, state or
+running service are migrated by merging this source. Adoption by a running
+deployment still requires its current owner's safe checkpoint and host receipt.
