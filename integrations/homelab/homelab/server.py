@@ -8,6 +8,7 @@ import threading
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 from urllib.parse import parse_qs, urlsplit
 
 from .config import ConfigError, read_token
@@ -42,6 +43,12 @@ class HubServer(ThreadingHTTPServer):
             embedder = OllamaEmbedder(embedding_config['base_url'], model=embedding_config['model'])
         self.knowledge = KnowledgeStore(state / 'knowledge.sqlite3', config['projects'], embedder=embedder)
         super().__init__(('127.0.0.1', config.get('port', 8765)), Handler)
+
+    def server_bind(self):
+        # HTTPServer's default performs reverse DNS, which can block startup
+        # even for 127.0.0.1. This listener has a fixed literal local identity.
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
     def process_request(self, request, client_address):
         if not self.slots.acquire(blocking=False):

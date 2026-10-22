@@ -5,10 +5,33 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from homelab.config import add_project, init_state, load_config, read_token
 from homelab.http_client import APIError, Client
 from homelab.server import make_server
+
+
+class StartupTests(unittest.TestCase):
+    def test_loopback_hub_serves_when_reverse_dns_is_unavailable(self):
+        # A literal local listener must not block on external name resolution.
+        with tempfile.TemporaryDirectory() as temp:
+            config = load_config(init_state(Path(temp).resolve() / 'state', port=0))
+            with patch('socket.getfqdn', side_effect=AssertionError('Reverse DNS was required')):
+                server = make_server(config)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                connection = http.client.HTTPConnection('127.0.0.1', server.server_port, timeout=3)
+                try:
+                    connection.request('GET', '/health')
+                    response = connection.getresponse()
+                    self.assertEqual(response.status, 200)
+                    self.assertEqual(json.loads(response.read()), {'status': 'alive'})
+                finally:
+                    connection.close()
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(2)
 
 
 class ServerTests(unittest.TestCase):

@@ -302,16 +302,19 @@ class KnowledgeStore:
                 data = stream.read(MAX_FILE_BYTES + 1)
             after = os.fstat(descriptor)
             current = path.lstat()
-            identity = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns, item.st_ctime_ns)
-            # Windows fstat/lstat can report different ctime semantics (change
-            # time versus creation time). Compare ctime across the open handle,
-            # but use stable identity, size and mtime for the path cross-check.
-            path_identity = lambda item: identity(item)[:-1] if os.name == "nt" else identity(item)
-            if (len(data) > MAX_FILE_BYTES or identity(before) != identity(after)
-                    or path_identity(after) != path_identity(current)):
+            identity = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns)
+            version = lambda item: (*identity(item), item.st_ctime_ns)
+            # Windows can report change time from fstat and creation time from
+            # lstat. Compare ctime only between descriptor observations, while
+            # still checking that the current path identifies the file read.
+            if len(data) > MAX_FILE_BYTES or version(before) != version(after) or identity(after) != identity(current):
                 raise ValueError("source changed during read")
             if path.resolve(strict=True) != path:
                 raise ValueError("source path changed during read")
+            # Keep ctime-based detection of same-size, restored-mtime writes
+            # through the final path checks without mixing timestamp semantics.
+            if version(after) != version(os.fstat(descriptor)):
+                raise ValueError("source changed during read")
             if b"\x00" in data:
                 raise ValueError("binary content is not supported")
             return data.decode("utf-8"), _digest(data), len(data)

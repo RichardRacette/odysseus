@@ -231,6 +231,8 @@ def _sqlite_snapshot(source: Path, destination: Path) -> None:
                 original.backup(output, pages=256, progress=progress, sleep=0.05)
                 output.execute("PRAGMA journal_mode=DELETE")
         _integrity(destination)
+        # Windows FlushFileBuffers requires a writable handle. Reopen without
+        # truncating the verified backup and keep flush failures fatal.
         with destination.open("r+b") as handle:
             os.fsync(handle.fileno())
     except sqlite3.Error:
@@ -345,7 +347,8 @@ def verify_snapshot(snapshot_dir) -> dict:
         raise OperationsError("Snapshot contains unlisted or missing files")
     if manifest.get("contains_secrets") is not contains_secrets:
         raise OperationsError("Snapshot credential metadata is inconsistent")
-    return {"ok": True, "file_count": len(listed), "contains_secrets": contains_secrets,
+    # The public receipt reports a boolean presence flag, never a credential value.
+    return {"ok": True, "file_count": len(listed), "contains_secrets": contains_secrets is True,
             "sqlite_databases": sorted(databases), "manifest": manifest}
 
 
@@ -436,7 +439,7 @@ def restore_snapshot(snapshot_dir, destination) -> dict:
         reset = _reset_leases(stage / "queue.sqlite3")
         projects, rotated, archived = _disarm_restored_config(stage)
         receipt = {"restored": True, "file_count": verified["file_count"],
-                   "contains_secrets": verified["contains_secrets"], "leases_reset": reset,
+                   "contains_secrets": verified["contains_secrets"] is True, "leases_reset": reset,
                    "credentials_rotated": rotated, "reader_credentials_archived": archived,
                    "projects_requiring_reapproval": projects,
                    "source_corpus_restored": False,

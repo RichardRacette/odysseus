@@ -6,7 +6,7 @@ on:
       - integrations/homelab/**
       - .github/workflows/homelab.yml
   push:
-    branches: [codex/homelab-foundation]
+    branches: ['codex/homelab-*']
     paths:
       - integrations/homelab/**
       - .github/workflows/homelab.yml
