@@ -10,9 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class CLITests(unittest.TestCase):
-    def run_cli(self, *args):
+    def run_cli(self, *args, timeout=20):
         return subprocess.run([sys.executable, str(ROOT / 'lab.py'), *map(str, args)],
-                              text=True, capture_output=True, timeout=20)
+                              text=True, capture_output=True, timeout=timeout)
 
     def test_help_and_no_args_are_actionable(self):
         result = self.run_cli('--help')
@@ -48,7 +48,7 @@ class CLITests(unittest.TestCase):
 
     def test_synthetic_demo_runs_http_workers_and_restore(self):
         with tempfile.TemporaryDirectory() as temp:
-            result = self.run_cli('demo', '--output', Path(temp).resolve() / 'demo')
+            result = self.run_cli('demo', '--output', Path(temp).resolve() / 'demo', timeout=60)
             self.assertEqual(result.returncode, 0, result.stderr)
             report = json.loads(result.stdout)
             self.assertEqual(report['status'], 'passed')

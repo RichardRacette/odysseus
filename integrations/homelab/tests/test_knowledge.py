@@ -1,4 +1,5 @@
 """Behavioral tests for the opt-in, project-scoped evidence store."""
+from contextlib import closing
 import hashlib
 import sqlite3
 import tempfile
@@ -42,7 +43,7 @@ class KnowledgeTests(unittest.TestCase):
 
     def write(self, path, content):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        path.write_text(content, encoding="utf-8", newline="\n")
 
     def hits(self, query, project="a", **kwargs):
         return self.store.search(project, query, **kwargs)["results"]
@@ -201,7 +202,7 @@ class KnowledgeTests(unittest.TestCase):
         self.assertFalse(self.store.forget("b", record["id"]))
         self.assertTrue(self.store.forget("a", record["id"]))
         self.assertEqual(self.hits("orchard"), [])
-        with sqlite3.connect(self.db) as con:
+        with closing(sqlite3.connect(self.db)) as con, con:
             self.assertEqual(con.execute("SELECT count(*) FROM embeddings").fetchone()[0], 0)
             self.assertEqual(con.execute("SELECT count(*) FROM records_fts WHERE records_fts MATCH 'orchard'").fetchone()[0], 0)
 
@@ -254,6 +255,40 @@ class KnowledgeTests(unittest.TestCase):
         self.assertEqual(result["evidence_status"], "stale_references")
         self.assertEqual(result["source_refs"][0]["source_sha256"], evidence["source_sha256"])
 
+    def test_rewritten_source_keeps_exact_bytes_and_refreshes_citation(self):
+        source = self.a / "windows.md"
+        source.write_bytes(b"old evidence\r\n")
+        self.assertEqual(self.store.ingest("a")["added"], 1)
+        replacement = b"new orchard evidence\r\nsecond line\r\n"
+        source.write_bytes(replacement)
+        self.assertEqual(self.store.ingest("a")["updated"], 1)
+        hit = self.hits("orchard")[0]
+        self.assertEqual(hit["source_sha256"], hashlib.sha256(replacement).hexdigest())
+        self.assertEqual(hit["text"], replacement.decode())
+        self.assertEqual(hit["start_line"], 1)
+        self.assertEqual(hit["end_line"], 2)
+
+    def test_source_mutated_during_read_is_still_rejected(self):
+        import os
+        from types import SimpleNamespace
+        source = self.a / "race.md"
+        source.write_bytes(b"orchard")
+        real_fstat = os.fstat
+        calls = 0
+        def changed(fd):
+            nonlocal calls
+            calls += 1
+            result = real_fstat(fd)
+            if calls == 2:
+                attrs = {name: getattr(result, name) for name in
+                         ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns", "st_mode")}
+                attrs["st_mtime_ns"] += 1
+                return SimpleNamespace(**attrs)
+            return result
+        with patch("homelab.knowledge.os.fstat", side_effect=changed):
+            with self.assertRaisesRegex(ValueError, "changed during read"):
+                self.store._read_source("a", "race.md")
+
     def test_corrupt_database_is_not_overwritten(self):
         corrupt = self.base / "corrupt.db"
         original = b"not a sqlite database"
@@ -261,6 +296,7 @@ class KnowledgeTests(unittest.TestCase):
         with self.assertRaises(sqlite3.DatabaseError):
             KnowledgeStore(corrupt, {})
         self.assertEqual(corrupt.read_bytes(), original)
+        corrupt.unlink()  # Constructor failure must release its Windows handle.
 
     def test_authored_notes_have_a_total_byte_cap(self):
         with patch("homelab.knowledge.MAX_NOTE_BYTES", 20, create=True):
@@ -271,7 +307,7 @@ class KnowledgeTests(unittest.TestCase):
 
     def test_rebuild_restores_derived_fts_without_losing_notes(self):
         self.store.remember("a", "persistent orchard")
-        with sqlite3.connect(self.db) as con:
+        with closing(sqlite3.connect(self.db)) as con, con:
             con.execute("INSERT INTO records_fts(records_fts) VALUES('delete-all')")
         self.assertEqual(self.hits("orchard"), [])
         self.assertTrue(callable(getattr(self.store, "rebuild_index", None)), "Index rebuild is not implemented")
