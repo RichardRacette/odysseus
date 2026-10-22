@@ -1,0 +1,10 @@
+{
+  "kind": "json.validate",
+  "project": "lab",
+  "idempotency_key": "first-json-check-v1",
+  "target_node": "hub",
+  "payload": {
+    "text": "{\"summary\": \"Synthetic example\", \"next_steps\": [\"Verify source citations\", \"Rehearse restore\"]}",
+    "required_keys": ["summary", "next_steps"]
+  }
+}

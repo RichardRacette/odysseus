@@ -1,0 +1,13 @@
+{
+  "kind": "ollama.generate",
+  "project": "lab",
+  "idempotency_key": "first-gpu-json-v1",
+  "target_node": "gpu",
+  "max_attempts": 2,
+  "payload": {
+    "model": "gemma3:4b",
+    "prompt": "Return only one JSON object with exactly two fields: summary (a string) and next_steps (an array of strings). Summarize this synthetic project: A hub stores durable jobs. A GPU worker generates text. A lightweight worker validates JSON. Source citations must accompany project answers. Suggest two verification steps. Do not claim any deployment has happened.",
+    "format": "json",
+    "max_tokens": 256
+  }
+}

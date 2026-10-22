@@ -1,0 +1,7 @@
+{
+  "kind": "text.hash",
+  "project": "lab",
+  "idempotency_key": "first-hub-hash-v1",
+  "target_node": "hub",
+  "payload": {"text": "A durable lab keeps evidence."}
+}
