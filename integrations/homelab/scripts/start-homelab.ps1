@@ -41,14 +41,14 @@ if ($InstallStartup) {
     foreach ($path in @($labPath, $resolvedConfig, $resolvedPython)) {
         if ($path -match '["\r\n]') { throw 'Startup paths cannot contain quotes or newlines.' }
     }
-    $arguments = '"{0}" {1} --config "{2}"' -f $labPath, $command, $resolvedConfig
+    $arguments = '-m homelab.windows_supervisor --role {0} --config "{1}"' -f $Role, $resolvedConfig
     $action = New-ScheduledTaskAction -Execute $resolvedPython -Argument $arguments `
         -WorkingDirectory (Split-Path -Parent $labPath)
     $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
     $principal = New-ScheduledTaskPrincipal -UserId $identity -LogonType Interactive -RunLevel Limited
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity
     $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) `
-        -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -MultipleInstances IgnoreNew `
+        -MultipleInstances IgnoreNew `
         -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
     Register-ScheduledTask -TaskName $TaskName -TaskPath '\' -Action $action `
         -Principal $principal -Trigger $trigger -Settings $settings `
