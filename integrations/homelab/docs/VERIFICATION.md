@@ -2,6 +2,35 @@
 
 Date: **2026-10-22**. Base repository commit: `c2535d21c4b97c11fe29e74cdb163354a92da35c` (`dev`). This receipt describes the isolated companion implementation, not a deployed physical lab.
 
+## Portability follow-up
+
+The original [CI run 39814869411](https://github.com/RichardRacette/odysseus/actions/runs/39814869411)
+passed Ubuntu and Python 3.10/MCP but failed Windows and macOS. The separate
+`codex/homelab-portability` correction fixes snapshot flushing, SQLite cleanup,
+cross-platform source metadata checks and loopback startup's reverse-DNS
+dependency. [PORTABILITY.md](PORTABILITY.md) records causes, regression evidence,
+native-CI limits and safe adoption by an already running local rollout.
+
+After these changes, the root-owned combined run in the same Linux/Python
+3.12.14/MCP 1.30.0 environment completed:
+
+```text
+python -m unittest discover -s tests -v
+Ran 130 tests in 16.259s
+OK
+```
+
+**130 passed; zero skips.** The eight added cases include stable Windows-style
+metadata, mutation rejection, constructor cleanup, snapshot recovery and flush
+failure, and a real HTTP request without reverse DNS. The targeted defect
+regressions failed before their respective production fixes. Independent review
+found no blocking findings. Python compilation, shell syntax and `git diff
+--check` also passed. The demo's original 20-second subprocess limit remains.
+
+The earlier implementation receipt is preserved below. Consult the correction
+PR's actual checks for native Windows/macOS results; this local run alone is
+not a cross-platform or physical-host acceptance claim.
+
 ## Executed here
 
 Environment: Linux, Python **3.12.14**, optional MCP SDK **1.30.0** in an isolated verification environment. Core code uses the standard library. Integration tests used real loopback sockets; no external model/API or household corpus was used.

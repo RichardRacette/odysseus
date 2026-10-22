@@ -231,7 +231,9 @@ def _sqlite_snapshot(source: Path, destination: Path) -> None:
                 original.backup(output, pages=256, progress=progress, sleep=0.05)
                 output.execute("PRAGMA journal_mode=DELETE")
         _integrity(destination)
-        with destination.open("rb") as handle:
+        # Windows FlushFileBuffers requires a writable handle. Reopen without
+        # truncating the verified backup and keep flush failures fatal.
+        with destination.open("r+b") as handle:
             os.fsync(handle.fileno())
     except sqlite3.Error:
         raise OperationsError("Cannot create a consistent SQLite snapshot") from None

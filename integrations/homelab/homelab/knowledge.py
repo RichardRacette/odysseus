@@ -130,48 +130,52 @@ class KnowledgeStore:
         self.embedder = embedder
         self._lock = threading.RLock()
         self._db = sqlite3.connect(self.db_path, timeout=10, check_same_thread=False)
-        self._db.row_factory = sqlite3.Row
-        self._db.execute("PRAGMA foreign_keys=ON")
-        self._db.execute("PRAGMA journal_mode=WAL")
-        self._db.execute("PRAGMA synchronous=FULL")
-        self._db.execute("PRAGMA secure_delete=ON")
-        self._db.executescript("""
-            CREATE TABLE IF NOT EXISTS sources (
-                id TEXT PRIMARY KEY, project TEXT NOT NULL, path TEXT NOT NULL,
-                root TEXT NOT NULL, sha256 TEXT NOT NULL, byte_size INTEGER NOT NULL,
-                indexed_at TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'current',
-                error TEXT, UNIQUE(project,path)
-            );
-            CREATE TABLE IF NOT EXISTS records (
-                id TEXT PRIMARY KEY, project TEXT NOT NULL,
-                kind TEXT NOT NULL CHECK(kind IN ('source','note','inference','decision')),
-                text TEXT NOT NULL, source_id TEXT REFERENCES sources(id) ON DELETE CASCADE,
-                start_line INTEGER, end_line INTEGER, start_char INTEGER, end_char INTEGER,
-                source_refs TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS records_project ON records(project);
-            CREATE INDEX IF NOT EXISTS records_source ON records(source_id);
-            CREATE TABLE IF NOT EXISTS embeddings (
-                record_id TEXT PRIMARY KEY REFERENCES records(id) ON DELETE CASCADE,
-                fingerprint TEXT NOT NULL, dimension INTEGER NOT NULL, vector BLOB NOT NULL
-            );
-            CREATE VIRTUAL TABLE IF NOT EXISTS records_fts USING fts5(
-                text, content='records', content_rowid='rowid', tokenize='unicode61'
-            );
-            CREATE TRIGGER IF NOT EXISTS records_ai AFTER INSERT ON records BEGIN
-                INSERT INTO records_fts(rowid,text) VALUES(new.rowid,new.text);
-            END;
-            CREATE TRIGGER IF NOT EXISTS records_ad AFTER DELETE ON records BEGIN
-                INSERT INTO records_fts(records_fts,rowid,text) VALUES('delete',old.rowid,old.text);
-            END;
-            CREATE TRIGGER IF NOT EXISTS records_au AFTER UPDATE ON records BEGIN
-                INSERT INTO records_fts(records_fts,rowid,text) VALUES('delete',old.rowid,old.text);
-                INSERT INTO records_fts(rowid,text) VALUES(new.rowid,new.text);
-            END;
-        """)
-        if sqlite3.sqlite_version_info >= (3, 42, 0):
-            self._db.execute("INSERT INTO records_fts(records_fts,rank) VALUES('secure-delete',1)")
-        self._db.commit()
+        try:
+            self._db.row_factory = sqlite3.Row
+            self._db.execute("PRAGMA foreign_keys=ON")
+            self._db.execute("PRAGMA journal_mode=WAL")
+            self._db.execute("PRAGMA synchronous=FULL")
+            self._db.execute("PRAGMA secure_delete=ON")
+            self._db.executescript("""
+                CREATE TABLE IF NOT EXISTS sources (
+                    id TEXT PRIMARY KEY, project TEXT NOT NULL, path TEXT NOT NULL,
+                    root TEXT NOT NULL, sha256 TEXT NOT NULL, byte_size INTEGER NOT NULL,
+                    indexed_at TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'current',
+                    error TEXT, UNIQUE(project,path)
+                );
+                CREATE TABLE IF NOT EXISTS records (
+                    id TEXT PRIMARY KEY, project TEXT NOT NULL,
+                    kind TEXT NOT NULL CHECK(kind IN ('source','note','inference','decision')),
+                    text TEXT NOT NULL, source_id TEXT REFERENCES sources(id) ON DELETE CASCADE,
+                    start_line INTEGER, end_line INTEGER, start_char INTEGER, end_char INTEGER,
+                    source_refs TEXT NOT NULL DEFAULT '[]', created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS records_project ON records(project);
+                CREATE INDEX IF NOT EXISTS records_source ON records(source_id);
+                CREATE TABLE IF NOT EXISTS embeddings (
+                    record_id TEXT PRIMARY KEY REFERENCES records(id) ON DELETE CASCADE,
+                    fingerprint TEXT NOT NULL, dimension INTEGER NOT NULL, vector BLOB NOT NULL
+                );
+                CREATE VIRTUAL TABLE IF NOT EXISTS records_fts USING fts5(
+                    text, content='records', content_rowid='rowid', tokenize='unicode61'
+                );
+                CREATE TRIGGER IF NOT EXISTS records_ai AFTER INSERT ON records BEGIN
+                    INSERT INTO records_fts(rowid,text) VALUES(new.rowid,new.text);
+                END;
+                CREATE TRIGGER IF NOT EXISTS records_ad AFTER DELETE ON records BEGIN
+                    INSERT INTO records_fts(records_fts,rowid,text) VALUES('delete',old.rowid,old.text);
+                END;
+                CREATE TRIGGER IF NOT EXISTS records_au AFTER UPDATE ON records BEGIN
+                    INSERT INTO records_fts(records_fts,rowid,text) VALUES('delete',old.rowid,old.text);
+                    INSERT INTO records_fts(rowid,text) VALUES(new.rowid,new.text);
+                END;
+            """)
+            if sqlite3.sqlite_version_info >= (3, 42, 0):
+                self._db.execute("INSERT INTO records_fts(records_fts,rank) VALUES('secure-delete',1)")
+            self._db.commit()
+        except BaseException:
+            self._db.close()
+            raise
 
     def close(self):
         with self._lock:
@@ -298,11 +302,19 @@ class KnowledgeStore:
                 data = stream.read(MAX_FILE_BYTES + 1)
             after = os.fstat(descriptor)
             current = path.lstat()
-            identity = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns, item.st_ctime_ns)
-            if len(data) > MAX_FILE_BYTES or identity(before) != identity(after) or identity(after) != identity(current):
+            identity = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns)
+            version = lambda item: (*identity(item), item.st_ctime_ns)
+            # Windows can report change time from fstat and creation time from
+            # lstat. Compare ctime only between descriptor observations, while
+            # still checking that the current path identifies the file read.
+            if len(data) > MAX_FILE_BYTES or version(before) != version(after) or identity(after) != identity(current):
                 raise ValueError("source changed during read")
             if path.resolve(strict=True) != path:
                 raise ValueError("source path changed during read")
+            # Keep ctime-based detection of same-size, restored-mtime writes
+            # through the final path checks without mixing timestamp semantics.
+            if version(after) != version(os.fstat(descriptor)):
+                raise ValueError("source changed during read")
             if b"\x00" in data:
                 raise ValueError("binary content is not supported")
             return data.decode("utf-8"), _digest(data), len(data)

@@ -2,6 +2,12 @@
 
 This is an implementation and deployment handoff for a local coding agent with access to the actual home-lab machines. The code is in `integrations/homelab`. Start by executing the checks below; the package is already implemented, not a request to brainstorm a replacement.
 
+**2026-10-22 portability follow-up:** the first Windows/macOS CI run found
+cross-platform defects after the Linux receipt. Before continuing a deployment,
+read [PORTABILITY.md](PORTABILITY.md) and incorporate its reviewed correction at
+a safe checkpoint in the existing local session. Keep the active checkout and
+any local fixes intact; the follow-up uses a separate branch.
+
 ## Repository and boundaries
 
 - Work from the `codex/homelab-foundation` branch of this repository in an isolated checkout. Inspect the branch and working tree before making changes. Keep any existing uncommitted work intact.

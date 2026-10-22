@@ -1,12 +1,22 @@
 """Behavioral tests for the opt-in, project-scoped evidence store."""
 import hashlib
+import os
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from homelab.knowledge import KnowledgeStore
+
+
+def changed_stat(info, **changes):
+    """Keep real OS metadata except the fields needed for a portability/race case."""
+    values = {name: getattr(info, name) for name in dir(info) if name.startswith("st_")}
+    values.update(changes)
+    return SimpleNamespace(**values)
 
 
 class LocalEmbeddings:
@@ -42,7 +52,7 @@ class KnowledgeTests(unittest.TestCase):
 
     def write(self, path, content):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        path.write_bytes(content.encode("utf-8"))
 
     def hits(self, query, project="a", **kwargs):
         return self.store.search(project, query, **kwargs)["results"]
@@ -125,6 +135,84 @@ class KnowledgeTests(unittest.TestCase):
         self.assertEqual(answer["results"], [])
         self.assertTrue(answer["warnings"])
 
+    def test_stable_source_survives_different_fd_and_path_ctime_semantics(self):
+        source = self.a / "policy.md"
+        self.write(source, "backup each week\n")
+        fstat = os.fstat
+
+        def descriptor_stat(fd):
+            info = fstat(fd)
+            # Windows fstat can report change time while lstat reports birth time.
+            return changed_stat(info, st_ctime_ns=info.st_ctime_ns + 1_000_000)
+
+        with patch("homelab.knowledge.os.fstat", side_effect=descriptor_stat):
+            result = self.store.ingest("a")
+            self.assertEqual(result["errors"], [])
+            self.assertEqual(result["added"], 1)
+            hits = self.hits("backup")
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]["text"], "backup each week\n")
+        self.assertEqual(hits[0]["source_sha256"], hashlib.sha256(source.read_bytes()).hexdigest())
+
+    def test_descriptor_ctime_change_with_unchanged_size_and_mtime_is_rejected(self):
+        self.write(self.a / "policy.md", "backup each week")
+        fstat = os.fstat
+        reads = 0
+
+        def changed_descriptor_stat(fd):
+            nonlocal reads
+            reads += 1
+            info = fstat(fd)
+            return changed_stat(info, st_ctime_ns=info.st_ctime_ns + (reads > 1))
+
+        with patch("homelab.knowledge.os.fstat", side_effect=changed_descriptor_stat):
+            result = self.store.ingest("a")
+        self.assertEqual(result["added"], 0)
+        self.assertTrue(result["errors"])
+        self.assertEqual(self.store.status("a")["records"], 0)
+
+    def test_path_and_descriptor_identity_mismatch_is_rejected(self):
+        self.write(self.a / "policy.md", "backup each week")
+        fstat = os.fstat
+
+        def different_file_stat(fd):
+            info = fstat(fd)
+            return changed_stat(info, st_ino=info.st_ino + 1)
+
+        with patch("homelab.knowledge.os.fstat", side_effect=different_file_stat):
+            result = self.store.ingest("a")
+        self.assertEqual(result["added"], 0)
+        self.assertTrue(result["errors"])
+        self.assertEqual(self.store.status("a")["records"], 0)
+
+    def test_descriptor_change_during_final_path_check_is_rejected(self):
+        source = self.a / "policy.md"
+        self.write(source, "backup each week")
+        fstat = os.fstat
+        resolve = Path.resolve
+        descriptor_reads = 0
+        path_checked = False
+
+        def descriptor_stat(fd):
+            nonlocal descriptor_reads
+            descriptor_reads += 1
+            info = fstat(fd)
+            return changed_stat(info, st_ctime_ns=info.st_ctime_ns + path_checked)
+
+        def resolve_after_read(path, *args, **kwargs):
+            nonlocal path_checked
+            result = resolve(path, *args, **kwargs)
+            if path == source and descriptor_reads >= 2:
+                path_checked = True
+            return result
+
+        with patch("homelab.knowledge.os.fstat", side_effect=descriptor_stat), \
+                patch.object(Path, "resolve", resolve_after_read):
+            result = self.store.ingest("a")
+        self.assertEqual(result["added"], 0)
+        self.assertTrue(result["errors"])
+        self.assertEqual(self.store.status("a")["records"], 0)
+
     def test_missing_root_marks_stale_without_deletion(self):
         self.write(self.a / "state.md", "orchard")
         self.store.ingest("a")
@@ -201,7 +289,7 @@ class KnowledgeTests(unittest.TestCase):
         self.assertFalse(self.store.forget("b", record["id"]))
         self.assertTrue(self.store.forget("a", record["id"]))
         self.assertEqual(self.hits("orchard"), [])
-        with sqlite3.connect(self.db) as con:
+        with closing(sqlite3.connect(self.db)) as con:
             self.assertEqual(con.execute("SELECT count(*) FROM embeddings").fetchone()[0], 0)
             self.assertEqual(con.execute("SELECT count(*) FROM records_fts WHERE records_fts MATCH 'orchard'").fetchone()[0], 0)
 
@@ -262,6 +350,20 @@ class KnowledgeTests(unittest.TestCase):
             KnowledgeStore(corrupt, {})
         self.assertEqual(corrupt.read_bytes(), original)
 
+    def test_failed_initialization_closes_database_connection(self):
+        corrupt = self.base / "failed-init.db"
+        corrupt.write_bytes(b"not a sqlite database")
+        # Retain the incomplete instance so the real connection can be inspected
+        # without replacing sqlite3 or depending on garbage-collection timing.
+        incomplete = KnowledgeStore.__new__(KnowledgeStore)
+        try:
+            with self.assertRaises(sqlite3.DatabaseError):
+                incomplete.__init__(corrupt, {})
+            with self.assertRaises(sqlite3.ProgrammingError):
+                incomplete._db.cursor()
+        finally:
+            incomplete.close()
+
     def test_authored_notes_have_a_total_byte_cap(self):
         with patch("homelab.knowledge.MAX_NOTE_BYTES", 20, create=True):
             self.store.remember("a", "first note text")
@@ -271,7 +373,7 @@ class KnowledgeTests(unittest.TestCase):
 
     def test_rebuild_restores_derived_fts_without_losing_notes(self):
         self.store.remember("a", "persistent orchard")
-        with sqlite3.connect(self.db) as con:
+        with closing(sqlite3.connect(self.db)) as con, con:
             con.execute("INSERT INTO records_fts(records_fts) VALUES('delete-all')")
         self.assertEqual(self.hits("orchard"), [])
         self.assertTrue(callable(getattr(self.store, "rebuild_index", None)), "Index rebuild is not implemented")

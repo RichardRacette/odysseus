@@ -1,4 +1,6 @@
 """Recovery tests use real SQLite/WAL files and isolated local Git repositories."""
+from contextlib import closing
+import errno
 import json
 import os
 from pathlib import Path
@@ -37,11 +39,11 @@ class OperationsTests(unittest.TestCase):
         }
         (self.state / "config.json").write_text(json.dumps(self.config))
         self.writer = sqlite3.connect(self.state / "knowledge.sqlite3")
+        self.addCleanup(self.writer.close)
         self.writer.execute("PRAGMA journal_mode=WAL")
         self.writer.execute("CREATE TABLE evidence (id TEXT PRIMARY KEY, content TEXT)")
         self.writer.execute("INSERT INTO evidence VALUES ('known', 'recover this evidence')")
         self.writer.commit()
-        self.addCleanup(self.writer.close)
 
     def snapshot(self):
         dest = self.root / "snapshot"
@@ -50,13 +52,52 @@ class OperationsTests(unittest.TestCase):
 
     def test_snapshot_captures_committed_wal_without_copying_live_sidecars(self):
         dest, manifest = self.snapshot()
-        with sqlite3.connect(dest / "knowledge.sqlite3") as conn:
+        with closing(sqlite3.connect(dest / "knowledge.sqlite3")) as conn:
             self.assertEqual(conn.execute("SELECT content FROM evidence").fetchone()[0],
                              "recover this evidence")
         self.assertEqual(operations.verify_snapshot(dest)["ok"], True)
         self.assertTrue(manifest["contains_secrets"])
         self.assertNotIn("private-admin-token", json.dumps(manifest))
         self.assertFalse((dest / "knowledge.sqlite3-wal").exists())
+
+    def test_snapshot_round_trip_with_writable_flush_requirement(self):
+        real_fsync = os.fsync
+
+        def flush_writable_descriptor(fd):
+            # Windows requires write access for FlushFileBuffers; POSIX fsync
+            # also accepts read-only handles. This zero-byte write probes the
+            # Windows requirement without changing the real snapshot bytes.
+            os.write(fd, b"")
+            real_fsync(fd)
+
+        with patch("homelab.operations.os.fsync", side_effect=flush_writable_descriptor):
+            snapshot, _ = self.snapshot()
+            restored = self.root / "restored"
+            operations.restore_snapshot(snapshot, restored)
+
+        self.assertTrue(operations.verify_snapshot(snapshot)["ok"])
+        with closing(sqlite3.connect(restored / "knowledge.sqlite3")) as conn:
+            self.assertEqual(conn.execute("SELECT id, content FROM evidence").fetchall(),
+                             [("known", "recover this evidence")])
+
+    def test_database_flush_failure_leaves_no_published_snapshot(self):
+        real_fsync = os.fsync
+
+        def fail_completed_database_flush(fd):
+            descriptor = os.fstat(fd)
+            for database in self.root.glob(".snapshot.partial-*/knowledge.sqlite3"):
+                if descriptor.st_size and os.path.samestat(descriptor, database.stat()):
+                    raise OSError(errno.EIO, "Simulated database flush failure")
+            real_fsync(fd)
+
+        with patch("homelab.operations.os.fsync", side_effect=fail_completed_database_flush):
+            with self.assertRaises(operations.OperationsError):
+                self.snapshot()
+
+        self.assertFalse((self.root / "snapshot").exists())
+        self.assertEqual(list(self.root.glob(".snapshot.partial-*")), [])
+        self.assertEqual(self.writer.execute("SELECT content FROM evidence").fetchall(),
+                         [("recover this evidence",)])
 
     def test_snapshot_only_copies_declared_state_files(self):
         (self.state / "household-private.txt").write_text("do not copy")
@@ -129,7 +170,7 @@ class OperationsTests(unittest.TestCase):
         snapshot, _ = self.snapshot()
         restored = self.root / "restored"
         result = operations.restore_snapshot(snapshot, restored)
-        with sqlite3.connect(restored / "knowledge.sqlite3") as conn:
+        with closing(sqlite3.connect(restored / "knowledge.sqlite3")) as conn:
             self.assertEqual(conn.execute("SELECT id FROM evidence").fetchone()[0], "known")
         config = json.loads((restored / "config.json").read_text())
         self.assertEqual(config["state_dir"], ".")
@@ -187,7 +228,7 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(list(target.iterdir()), [])
 
     def test_restore_invalidates_leases_without_resetting_attempt_limit(self):
-        with sqlite3.connect(self.state / "queue.sqlite3") as conn:
+        with closing(sqlite3.connect(self.state / "queue.sqlite3")) as conn, conn:
             conn.executescript("""
                 CREATE TABLE jobs (
                     id TEXT PRIMARY KEY, status TEXT, attempts INTEGER, max_attempts INTEGER,
@@ -204,7 +245,7 @@ class OperationsTests(unittest.TestCase):
         restored = self.root / "restored"
         result = operations.restore_snapshot(snapshot, restored)
         self.assertEqual(result["leases_reset"], 2)
-        with sqlite3.connect(restored / "queue.sqlite3") as conn:
+        with closing(sqlite3.connect(restored / "queue.sqlite3")) as conn:
             self.assertEqual(conn.execute("SELECT status,attempts,lease_token,last_lease_token FROM jobs WHERE id='retry'").fetchone(),
                              ("queued", 1, None, None))
             self.assertEqual(conn.execute("SELECT status FROM jobs WHERE id='exhausted'").fetchone()[0], "failed")
