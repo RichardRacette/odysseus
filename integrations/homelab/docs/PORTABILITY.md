@@ -31,6 +31,10 @@ The original snapshot exception hid the lower-level OS errno. The writable-handl
 requirement is established by the platform API and the regression, with native
 Windows CI providing the integration check.
 
+The workflow also runs on pushes to `codex/homelab-*` branches, with its existing
+path filters and read-only permissions. This ensures an isolated follow-up gets
+the same native platform matrix without changing the foundation branch.
+
 ## Platform references
 
 - [Microsoft FlushFileBuffers](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers)
