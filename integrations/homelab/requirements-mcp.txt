@@ -1,0 +1,3 @@
+# Optional bridge only. Core CLI, hub, workers and knowledge use Python stdlib.
+# Preserve an existing working v1 installation; do not upgrade it implicitly.
+mcp>=1.29.1,<2
