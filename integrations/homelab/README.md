@@ -6,6 +6,17 @@ An opt-in coordination and recovery layer for a small personal AI lab. It adds d
 
 Odysseus already has personal memory, document RAG, scheduling, and MCP support. This companion keeps that foundation authoritative and adds the missing cross-machine coordination and project evidence. It does not require changes to existing application configuration or data.
 
+## Project Factory v0.1 (stacked implementation candidate)
+
+The new [Project Factory runbook](docs/PROJECT-FACTORY.md) documents a
+durable, dependency-aware mission journal and approval/evidence CLI atop the
+**existing** queue. No general-purpose code execution or second scheduler is
+introduced. Try `python factory.py demo --output <new-private-directory>`
+to exercise real authenticated HTTP workers, pinned repository input
+verification, restart, evidence, approval and SQLite snapshot/restore on **one
+host**. This does not verify the physical three-node lab or resolve required
+repository security checks.
+
 ## Start with a complete demonstration
 
 Requires Python **3.10+ with SQLite FTS5**. The core has no third-party dependencies. From this directory, choose a new output path outside the checkout:
