@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "mission_id": "factory-release-audit-v01",
+  "project": "lab",
+  "objective": "Integrity-check and validate the existing Home Lab JSON job example before its use in project handoffs.",
+  "repository": {
+    "url": "https://github.com/RichardRacette/odysseus",
+    "revision": "5581cdd624b9df49efcd4683e60c29d2da80830f"
+  },
+  "inputs": [
+    {
+      "reference": "integrations/homelab/examples/validate.json at 5581cdd624b9df49efcd4683e60c29d2da80830f",
+      "sha256": "4d00dbf9a26892bb5a95bfe1f5a3426733ae1623a7e636b7d3f353039d4669de"
+    }
+  ],
+  "expected_outputs": [
+    "Pinned SHA-256 worker result for the example",
+    "Verified JSON object and required manifest keys",
+    "Private, hash-checkable execution evidence"
+  ],
+  "acceptance_criteria": [
+    "Existing workers complete both fixed local jobs",
+    "Expected SHA-256 matches the pinned repository example",
+    "JSON object has kind, project and payload keys",
+    "A human explicitly reviews and approves the evidence"
+  ],
+  "restrictions": {
+    "local_only": true,
+    "cloud_spend_allowed": false,
+    "network": "loopback_only",
+    "actions": []
+  },
+  "human_approval": true,
+  "steps": [
+    {
+      "id": "integrity",
+      "kind": "text.hash",
+      "payload": {
+        "text": "{\n  \"kind\": \"json.validate\",\n  \"project\": \"lab\",\n  \"idempotency_key\": \"first-json-check-v1\",\n  \"target_node\": \"hub\",\n  \"payload\": {\n    \"text\": \"{\\\"summary\\\": \\\"Synthetic example\\\", \\\"next_steps\\\": [\\\"Verify source citations\\\", \\\"Rehearse restore\\\"]}\",\n    \"required_keys\": [\"summary\", \"next_steps\"]\n  }\n}\n"
+      },
+      "depends_on": [],
+      "expected_sha256": "4d00dbf9a26892bb5a95bfe1f5a3426733ae1623a7e636b7d3f353039d4669de",
+      "max_attempts": 3
+    },
+    {
+      "id": "schema",
+      "kind": "json.validate",
+      "payload": {
+        "text": "{\n  \"kind\": \"json.validate\",\n  \"project\": \"lab\",\n  \"idempotency_key\": \"first-json-check-v1\",\n  \"target_node\": \"hub\",\n  \"payload\": {\n    \"text\": \"{\\\"summary\\\": \\\"Synthetic example\\\", \\\"next_steps\\\": [\\\"Verify source citations\\\", \\\"Rehearse restore\\\"]}\",\n    \"required_keys\": [\"summary\", \"next_steps\"]\n  }\n}\n",
+        "required_keys": [
+          "kind",
+          "project",
+          "payload"
+        ]
+      },
+      "depends_on": [
+        "integrity"
+      ],
+      "max_attempts": 3
+    }
+  ]
+}
