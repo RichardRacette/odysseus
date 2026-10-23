@@ -166,7 +166,9 @@ Hash steps **must** carry the exact expected source digest; the factory checks
 both the declared digest against its own independently computed bytes and the
 returned bytes/hash. JSON steps independently check parseable object keys and
 the worker's shape verdict, **not semantic accuracy**. Model output is
-`reported_only` and cannot auto-unblock a downstream step.
+`reported_only` and cannot auto-unblock a downstream step. A mission that
+declares a generated-output dependency is rejected at validation rather than
+left permanently waiting for an unsupported automatic approval mechanism.
 
 Default steps use the **existing unpinned pull-based router**, which admits
 only configured node capabilities and exact model allowlists and adapts to
@@ -206,6 +208,9 @@ success-rate or physical-resource probe.
   or absence of tampering by a machine administrator.
 - **Backup:** existing `lab.py snapshot`, `verify-snapshot`, and disarmed
   `restore` cover the factory because no new data store is introduced.
+  The factory explicitly refuses to advance, retry or approve restored missions
+  while the saved project root remains disarmed. Re-register and verify the
+  specific project root through the existing administrative procedure first.
   Snapshots contain private results and credentials and are unencrypted:
   protect them with the existing encrypted-backup system. Do not delete or
   modify existing backups, jobs, notes or credentials as part of acceptance.
