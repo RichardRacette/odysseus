@@ -40,6 +40,18 @@ python -m unittest discover -s tests -v
 python -m compileall -q homelab lab.py factory.py
 ```
 
+Portable one-command offline acceptance scripts perform these checks and the
+end-to-end demo, then verify the exported packet. Use a **new absolute**
+destination, outside the checkout:
+
+```sh
+bash scripts/verify-project-factory.sh "$HOME/odysseus-factory-acceptance-001"
+```
+
+```powershell
+.\\scripts\\verify-project-factory.ps1 -Destination "$env:LOCALAPPDATA\\OdysseusFactory-acceptance-001"
+```
+
 Run a self-contained integration drill in a new private directory (choose a
 new path; **do not place it in Git**):
 
@@ -80,9 +92,12 @@ python lab.py project-add --config /private/homelab/config.json \
 ```
 
 To submit the included example, first verify that `lab` is registered, then
-from the authoritative hub:
+from the authoritative hub. Plan first: this previews eligible workers and
+potential routing blockers without submitting jobs.
 
 ```sh
+python factory.py plan --config /private/homelab/config.json \\
+  --mission examples/project-factory-release-audit.json
 python factory.py submit --config /private/homelab/config.json \
   --mission examples/project-factory-release-audit.json
 python factory.py advance --config /private/homelab/config.json \
