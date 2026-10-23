@@ -46,6 +46,9 @@ def demo(destination):
     from homelab.worker import run_once
 
     out = Path(destination).expanduser().absolute()
+    checkout = Path(__file__).resolve().parent
+    if out == checkout or checkout in out.parents:
+        raise FactoryError("Demo output must be outside the source checkout")
     if out.exists():
         raise FactoryError("Demo destination already exists; refuse to overwrite old evidence")
     if not out.parent.is_dir() or out.is_symlink():
