@@ -148,6 +148,11 @@ def validate_mission(value):
     for sid, step in index.items():
         if any(d not in index for d in step["depends_on"]):
             raise FactoryError("Step depends on a nonexistent step")
+        if any(index[d]["kind"] == "ollama.generate" for d in step["depends_on"]):
+            # Model text cannot be verified merely because the HTTP call succeeded.
+            # A future explicit verification/approval step must be implemented
+            # before model-generated output may unblock automatic work.
+            raise FactoryError("Model outputs cannot be automatic step dependencies")
     visiting, visited = set(), set()
     def visit(sid):
         if sid in visiting:
