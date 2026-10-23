@@ -16,10 +16,10 @@ from homelab.queue import PolicyError, QueueError
 def _parser():
     parser = argparse.ArgumentParser(description="Project Factory: durable mission DAGs atop the existing Home Lab queue")
     sub = parser.add_subparsers(dest="action", required=True)
-    for name in ("submit", "advance", "inspect", "retry", "seal", "approve", "export"):
+    for name in ("plan", "submit", "advance", "inspect", "retry", "seal", "approve", "export"):
         cmd = sub.add_parser(name)
         cmd.add_argument("--config", required=True, help="Private hub config.json (execute on the authoritative hub)")
-        if name == "submit":
+        if name in ("plan", "submit"):
             cmd.add_argument("--mission", required=True, help="A bounded, trusted JSON mission definition")
         else:
             cmd.add_argument("--mission-id", required=True)
@@ -125,11 +125,12 @@ def run(args):
     if args.action == "demo":
         return demo(args.output)
     factory = Factory(load_config(args.config))
-    if args.action == "submit":
+    if args.action in ("plan", "submit"):
         path = Path(args.mission)
         if path.stat().st_size > 65536:
             raise FactoryError("Mission file exceeds 64 KiB")
-        return factory.submit(json.loads(path.read_text(encoding="utf-8")))
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        return factory.plan(manifest) if args.action == "plan" else factory.submit(manifest)
     if args.action == "advance":
         return factory.advance(args.mission_id)
     if args.action == "inspect":
