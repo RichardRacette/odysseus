@@ -249,6 +249,20 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(restored.inspect(self.mission["mission_id"])["steps"][0]["job_id"], jid)
         self.assertEqual(restored.queue.get(jid)["status"], "queued")
 
+    def test_disarmed_restore_rejects_advance_and_review(self):
+        self.submit()
+        first = self.advance()
+        create_snapshot(self.config["state_dir"], self.root / "frozen")
+        restore_snapshot(self.root / "frozen", self.root / "disarmed")
+        disarmed = Factory(load_config(self.root / "disarmed" / "config.json"))
+        self.assertEqual(disarmed.inspect(self.mission["mission_id"])["steps"][0]["job_id"],
+                         first["steps"][0]["job_id"])
+        with self.assertRaisesRegex(FactoryError, "reapproval"):
+            disarmed.advance(self.mission["mission_id"])
+        with self.assertRaisesRegex(FactoryError, "reapproval"):
+            disarmed.approve(self.mission["mission_id"], "operator", "0" * 64)
+        self.assertEqual(disarmed.queue.list_jobs("lab")[0]["status"], "queued")
+
     def test_export_detects_tampering_and_refuses_overwrite(self):
         self.submit()
         self.assertEqual(self.finish()["status"], "review_required")
