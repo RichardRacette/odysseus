@@ -27,7 +27,7 @@ Date: 2026-10-23 (America/Detroit). Status: **code committed, review and runtime
 | `scripts/verify-project-factory.ps1` | One-command Windows acceptance |
 | `docs/PROJECT-FACTORY.md` | Architecture, operation, permission boundaries, recovery and host checklist |
 | `README.md`, `docs/RUNBOOK.md` | Discovery and operator navigation |
-| `.github/workflows/homelab.yml` | Existing unittest matrix also compiles the new entrypoint |
+| `.github/workflows/homelab.yml` | Existing unittest matrix also compiles the new entrypoint, runs the ephemeral end-to-end CLI demonstration and verifies its evidence packet on each platform |
 
 Everything is in `integrations/homelab/` except the workflow. No dependency
 or production application requirements changed. No new worker permission, shell
@@ -38,7 +38,7 @@ command runner, server listener, model download or cloud integration was added.
 | Gate | Status | Evidence / next action |
 | --- | --- | --- |
 | Live repository and PR inspection | **Verified** | #4/#5/#7/#8 inspected via authenticated GitHub connector on Oct 23 |
-| Feature source committed and draft PR created | **Verified** | GitHub draft PR #9, 10 changed paths, source history |
+| Feature source committed and draft PR created | **Verified** | GitHub draft PR #9, 11 changed paths, source history |
 | Source consistency and guard presence | **Verified (static)** | 11/11 source-level checks including pinned fixture text, no obvious general shell executor, safeguards and unchanged dependency workflow |
 | Python unit/integration/fault suite | **Unverified** | 20 tests authored; no new-head hosted CI or local Python execution observed in this session |
 | End-to-end CLI demo | **Unverified** | Runnable test and existing-HTTP/worker demo code published; needs host run |
