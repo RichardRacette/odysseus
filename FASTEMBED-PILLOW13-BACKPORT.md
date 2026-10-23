@@ -110,3 +110,30 @@ Sources: [FastEmbed 0.9.0 metadata](https://pypi.org/pypi/fastembed/0.9.0/json),
 [Pillow 13 release notes](https://pillow.readthedocs.io/en/stable/releasenotes/13.0.0.html),
 [pip-audit services](https://github.com/pypa/pip-audit), and
 [ONNX Runtime privacy controls](https://github.com/microsoft/onnxruntime/blob/main/docs/Privacy.md).
+
+## Hosted candidate verification (not adoption)
+
+The read-only [Pillow 13 candidate validation workflow](.github/workflows/pillow13-candidate.yml)
+provides a distinct, opt-in evaluation of this toolchain on hosted Linux
+Python 3.11 and 3.14. It rebuilds the exact hash-pinned wheel from the published
+FastEmbed 0.9.0 artifacts, installs it with regular pip dependency resolution,
+checks the installed local version and Pillow major version, runs integrity and
+focused embedding/image regressions, and audits the core-plus-optional resolved
+candidate graph with strict OSV. The Python 3.11 job additionally runs the full
+application pytest suite. No wheel is published or deployed, and it never
+changes the application's default requirements or existing security gate.
+
+A passing candidate workflow is **not** an upstream vulnerability fix, a
+passing default PyPI audit, a supported Windows/macOS rollout, proof of live
+model/device interoperability, or authorization to change production dependencies.
+The built wheel is a local derivative. Version-based OSV results do not inspect
+its source, which is why the wheel and runtime-file hashes are verified separately.
+
+Before considering adoption, retain the exact CI run/commit and provenance,
+review maintenance ownership and distribution strategy, evaluate real application
+model inference and cross-platform behavior, and secure approval for a separate
+default-dependency change with a rollback procedure. Re-run **all** normal CI
+and security checks on that exact dependency-change head. Do not use
+`--no-deps`, bypass GitHub dependency review, suppress Pillow advisories, or
+interpret an advisory job as green when it fails. The default `pip-audit`
+remains red until normal dependency resolution can install a fixed Pillow.

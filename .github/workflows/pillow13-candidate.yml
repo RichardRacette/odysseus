@@ -1,0 +1,96 @@
+# Non-production evaluation of PR #7's hash-pinned, metadata-only FastEmbed backport.
+# This does not replace the ordinary dependency-review gate or the default audit.
+name: Pillow 13 candidate validation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/pillow13-candidate.yml'
+      - 'FASTEMBED-PILLOW13-BACKPORT.md'
+      - 'scripts/build_fastembed_pillow13.py'
+      - 'tests/test_fastembed_backport_builder.py'
+      - 'requirements.txt'
+      - 'requirements-optional.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pillow13-candidate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  candidate:
+    name: Candidate on Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.14']
+    env:
+      ORT_DISABLE_TELEMETRY: '1'
+      HF_HUB_DISABLE_TELEMETRY: '1'
+      TOKENIZERS_PARALLELISM: 'false'
+    steps:
+      - name: Checkout without persisting credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Build and verify backport from hash-pinned official artifacts
+        run: |
+          set -euo pipefail
+          python scripts/build_fastembed_pillow13.py --output-dir "$RUNNER_TEMP/pillow13-backport"
+
+      - name: Install candidate with normal dependency resolution
+        run: |
+          set -euo pipefail
+          python -m pip install -r "$RUNNER_TEMP/pillow13-backport/requirements-backport.txt"
+          python -m pip check
+
+      - name: Confirm actual candidate and fixed Pillow were installed
+        run: |
+          python - <<'PY'
+          from importlib.metadata import version
+          import PIL
+          from fastembed import TextEmbedding
+          assert version('fastembed') == '0.9.0+odysseus.pillow13.1'
+          assert 13 <= int(PIL.__version__.split('.')[0]) < 14
+          assert TextEmbedding is not None
+          print('Installed:', version('fastembed'), 'Pillow:', PIL.__version__)
+          PY
+
+      - name: Run builder and embedding/image regressions
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_fastembed_backport_builder.py \
+            tests/test_embeddings.py \
+            tests/test_embeddings_client.py \
+            tests/test_embedding_cache_confinement.py \
+            tests/test_fastembed_cache_path.py \
+            tests/test_gallery_exif_orientation.py
+
+      - name: Run full application suite on supported CI Python 3.11
+        if: matrix.python-version == '3.11'
+        run: python -m pytest -q
+
+      - name: Strict OSV audit of candidate and optional dependency graph
+        run: |
+          set -euo pipefail
+          python -m pip install pip-audit==2.10.0
+          python -m pip_audit \
+            -r "$RUNNER_TEMP/pillow13-backport/requirements-backport.txt" \
+            -r requirements-optional.txt \
+            --strict --vulnerability-service osv
+
+      # The candidate uses an unpublished local version. PyPI's version-based
+      # audit cannot check it; OSV plus the builder's byte-identity checks are
+      # useful additional evidence, not production adoption or a gate bypass.
