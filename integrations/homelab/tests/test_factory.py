@@ -256,6 +256,33 @@ class FactoryTests(unittest.TestCase):
         self.assertEqual(len(ids), 1)
         self.assertEqual(len(self.factory.queue.list_jobs("lab")), 1)
 
+    def test_independent_work_continues_when_another_branch_fails(self):
+        changed = copy.deepcopy(self.mission)
+        changed["steps"].append({
+            "id": "independent", "kind": "text.hash",
+            "payload": {"text": "This check can finish without the first branch."},
+            "depends_on": [], "expected_sha256": hashlib.sha256(
+                b"This check can finish without the first branch.").hexdigest()
+        })
+        self.submit(changed)
+        state = self.advance()
+        self.assertEqual(state["steps"][2]["state"], "queued")
+        original = self.factory.queue.claim("hub")
+        self.assertEqual(original["id"], state["steps"][0]["job_id"])
+        self.factory.queue.fail("hub", original["id"], original["lease_token"],
+                                "Simulated terminal failure", retryable=False)
+        degraded = self.advance()
+        self.assertEqual(degraded["status"], "running_with_failures")
+        self.assertEqual(degraded["steps"][1]["state"], "blocked")
+        independent = self.factory.queue.claim("mac")
+        self.assertEqual(independent["id"], degraded["steps"][2]["job_id"])
+        result = _execute(independent, "http://127.0.0.1:11434", [], threading.Event())
+        self.factory.queue.complete("mac", independent["id"], independent["lease_token"], result)
+        final = self.advance()
+        self.assertEqual(final["status"], "failed")
+        self.assertEqual(final["steps"][2]["verification"], "verified")
+        self.assertEqual(final["steps"][1]["state"], "blocked")
+
     def test_real_http_worker_demo_and_restored_approval(self):
         from factory import demo
         report = demo(self.root / "demonstration")
