@@ -72,7 +72,7 @@ def validate_mission(value):
           {"schema_version", "mission_id", "project", "objective", "repository", "inputs",
            "expected_outputs", "acceptance_criteria", "restrictions", "human_approval", "steps"},
           "mission")
-    if value["schema_version"] != 1:
+    if type(value["schema_version"]) is not int or value["schema_version"] != 1:
         raise FactoryError("Unsupported mission schema")
     _name(value["mission_id"], "mission id")
     _name(value["project"], "project")
@@ -234,6 +234,28 @@ class Factory:
             history = db.execute("SELECT step_id,generation,job_id,created_at FROM factory_dispatches "
                                  "WHERE mission_id=? ORDER BY step_id,generation", (mission_id,)).fetchall()
         return (json.loads(row[0]), row, {s[0]: {"generation": s[1], "job_id": s[2]} for s in steps}, history)
+
+    def plan(self, manifest):
+        """Dry-run routing preview. No mission or job is admitted."""
+        canonical = validate_mission(manifest)
+        if manifest["project"] not in self.config["projects"]:
+            raise FactoryError("Project must first be registered with lab.py project-add")
+        health = self.queue.status()["nodes"]
+        steps = []
+        for step in manifest["steps"]:
+            try:
+                target, eligible = self._route(step)
+                routing_blocker = None
+            except FactoryError as exc:
+                target, eligible, routing_blocker = None, [], str(exc)
+            steps.append({"step_id": step["id"], "kind": step["kind"],
+                          "depends_on": step["depends_on"], "declared_resources": step.get("resources", {}),
+                          "target_node": target, "eligible_nodes": eligible,
+                          "online_eligible_nodes": [n for n in eligible if health[n]["online"]],
+                          "routing_blocker": routing_blocker})
+        return {"mission_id": manifest["mission_id"], "project": manifest["project"],
+                "manifest_sha256": _hash(canonical), "admitted": False,
+                "executes_commands": False, "steps": steps}
 
     def submit(self, manifest):
         canonical = validate_mission(manifest)
