@@ -24,6 +24,7 @@ ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")
 MAX_MISSION_BYTES = 65536
 MAX_STEPS = 64
 MAX_RETRIES = 3
+MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
 
 
 class FactoryError(ValueError):
@@ -304,7 +305,7 @@ class Factory:
                 obj = json.loads(step["payload"]["text"],
                                  parse_constant=lambda _: (_ for _ in ()).throw(ValueError()))
                 expected = {"valid": True, "keys": sorted(obj)}
-            except (ValueError, TypeError):
+            except (ValueError, TypeError, RecursionError):
                 return "mismatch"
             return "verified" if isinstance(obj, dict) and result == expected else "mismatch"
         return "reported_only"   # A model's answer is never automatically factual truth.
@@ -462,6 +463,8 @@ class Factory:
             if existing:
                 return existing[0]
             data = _canonical(packet)
+            if len(data.encode("utf-8")) > MAX_EVIDENCE_BYTES:
+                raise FactoryError("Evidence packet exceeds the configured size limit")
             digest = _hash(data)
             db.execute("INSERT INTO factory_packets(mission_id,revision,stage,sealed_at,sha256,packet_json) "
                        "VALUES(?,?,?,?,?,?)", (mission_id, revision, state, _utc(), digest, data))
@@ -525,7 +528,7 @@ class Factory:
     @staticmethod
     def verify_export(path):
         target = Path(path).expanduser().absolute()
-        if target.is_symlink() or target.stat().st_size > 1024 * 1024:
+        if target.is_symlink() or target.stat().st_size > MAX_EVIDENCE_BYTES + 1024 * 1024:
             raise FactoryError("Invalid or oversized evidence file")
         data = json.loads(target.read_text(encoding="utf-8"))
         if (not isinstance(data, dict) or set(data) != {"packet", "sha256"}
