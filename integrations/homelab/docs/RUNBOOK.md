@@ -169,3 +169,10 @@ Run the snapshot/restore drill in [OPERATIONS.md](OPERATIONS.md). Back up origin
 Only after foreground checks, install the optional user-login launchers. Record that they require login; use a separately reviewed service configuration if pre-login availability is required. Complete the [host acceptance record](HOST-ACCEPTANCE.md). During ordinary use, check worker freshness, queued-job age, failed jobs, source freshness, last successful remote backup, and free space.
 
 Cloud escalation remains disabled. Before adding it, define exact providers/tasks, eligible data, per-job and daily budgets, explicit approval rules, failure behavior, and a cost ledger; enforce those in an adapter before accepting a cloud job. Add ComfyUI through another fixed job contract and a GPU capacity policy only after the current model workflow is useful and recoverable.
+
+## Project Factory mission handoff
+
+Use [PROJECT-FACTORY.md](PROJECT-FACTORY.md) for new hub-local mission
+submission, explicit dependency advancement, evidence review/approval and
+physical host acceptance. Existing worker startup and scoped credentials
+remain unchanged; do not use a fresh init on existing state.
