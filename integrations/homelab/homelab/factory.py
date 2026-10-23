@@ -330,9 +330,19 @@ class Factory:
                               "attempts": job["attempts"] if job else 0,
                               "assigned_node": job["assigned_node"] if job else None,
                               "error": job["error"] if job else None})
-        bad = {"failed", "cancelled", "verification_failed"}
+        bad = {"failed", "cancelled", "verification_failed", "blocked"}
+        # Failure is terminal only once independent work finishes. A downstream
+        # step whose prerequisite has failed can never be dispatched as-is.
+        for _ in summaries:
+            current = {s["step_id"]: s for s in summaries}
+            for item in summaries:
+                if item["state"] == "waiting" and any(
+                        current[d]["state"] in bad for d in item["depends_on"]):
+                    item["state"] = "blocked"
+                    item["verification"] = "blocked"
         if any(x["state"] in bad for x in summaries):
-            state = "failed"
+            state = ("failed" if all(x["state"] not in ("waiting", "queued", "running")
+                                 for x in summaries) else "running_with_failures")
         elif all(x["state"] == "succeeded" for x in summaries):
             state = "approved" if row[3] else "review_required"
         elif any(x["state"] == "running" for x in summaries):
