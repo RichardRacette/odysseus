@@ -52,6 +52,21 @@ class FactoryTests(unittest.TestCase):
                 self.factory.queue.complete("hub", claimed["id"], claimed["lease_token"], outcome)
         return self.advance()
 
+    def test_plan_is_read_only_and_exposes_capability_routing(self):
+        planned = self.factory.plan(self.mission)
+        self.assertFalse(planned["admitted"])
+        self.assertEqual(len(planned["steps"]), 2)
+        self.assertIn("hub", planned["steps"][0]["eligible_nodes"])
+        self.assertEqual(self.factory.queue.status()["jobs"]["queued"], 0)
+        self.submit()
+        self.assertIsNone(self.factory.inspect(self.mission["mission_id"])["steps"][0]["job_id"])
+
+    def test_boolean_schema_version_does_not_pass_as_integer(self):
+        changed = copy.deepcopy(self.mission)
+        changed["schema_version"] = True
+        with self.assertRaises(FactoryError):
+            self.factory.plan(changed)
+
     def test_mission_lifecycle_verification_approval_and_immutability(self):
         initial = self.submit()
         self.assertEqual(initial["status"], "queued")
