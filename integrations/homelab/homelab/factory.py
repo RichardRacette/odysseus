@@ -385,6 +385,10 @@ class Factory:
     def advance(self, mission_id):
         self.queue.sweep_expired()
         spec, row, entries, _, jobs, summaries, state = self._view(mission_id)
+        # The existing restore workflow deliberately disarms project roots.
+        # Do not bypass its registration gate through the local factory API.
+        if spec["project"] not in self.config["projects"]:
+            raise FactoryError("Restored project requires explicit reapproval before advancing")
         if state in ("approved", "failed", "review_required"):
             if state != "approved":
                 self.seal(mission_id)
@@ -419,6 +423,8 @@ class Factory:
     def retry(self, mission_id, step_id):
         _name(step_id, "step id")
         spec, row, entries, _, jobs, summaries, state = self._view(mission_id)
+        if spec["project"] not in self.config["projects"]:
+            raise FactoryError("Restored project requires explicit reapproval before retry")
         if state == "approved":
             raise FactoryError("Approved missions are immutable")
         match = next((x for x in summaries if x["step_id"] == step_id), None)
@@ -509,6 +515,8 @@ class Factory:
         if not isinstance(evidence_sha256, str) or not HEX64.fullmatch(evidence_sha256):
             raise FactoryError("Approval requires the exact reviewed evidence SHA-256")
         spec, row, entries, _, _, summaries, state = self._view(mission_id)
+        if spec["project"] not in self.config["projects"]:
+            raise FactoryError("Restored project requires explicit reapproval before approval")
         packet = self._latest(mission_id)
         if state != "review_required" or packet["stage"] != state or packet["sha256"] != evidence_sha256:
             raise FactoryError("Approval requires current review-ready evidence with matching hash")
