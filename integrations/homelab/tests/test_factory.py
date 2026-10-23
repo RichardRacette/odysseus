@@ -61,6 +61,17 @@ class FactoryTests(unittest.TestCase):
         self.submit()
         self.assertIsNone(self.factory.inspect(self.mission["mission_id"])["steps"][0]["job_id"])
 
+    def test_unverified_model_result_cannot_unlock_automatic_execution(self):
+        changed = copy.deepcopy(self.mission)
+        changed["steps"].insert(0, {
+            "id": "generated", "kind": "ollama.generate",
+            "payload": {"model": "gemma3:4b", "prompt": "Make a checklist."},
+            "depends_on": []
+        })
+        changed["steps"][1]["depends_on"] = ["generated"]
+        with self.assertRaisesRegex(FactoryError, "cannot be automatic"):
+            self.factory.plan(changed)
+
     def test_boolean_schema_version_does_not_pass_as_integer(self):
         changed = copy.deepcopy(self.mission)
         changed["schema_version"] = True
