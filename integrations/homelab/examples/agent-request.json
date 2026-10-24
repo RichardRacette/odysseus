@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "request_id": "pilot-001",
+  "requested_by": "fae",
+  "capability": "fixture.audit.v1"
+}

@@ -1,0 +1,4 @@
+# These fixtures are byte-pinned; preserve LF even with core.autocrlf=true.
+project-factory-release-audit.json text eol=lf
+validate.json text eol=lf
+agent-request.json text eol=lf
