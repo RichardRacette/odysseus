@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "project_id": "odysseus",
+  "control_plane_repository": "RichardRacette/richieos-control-plane",
+  "canonical_project_record": "projects/odysseus.json",
+  "repository": "RichardRacette/odysseus",
+  "default_branch": "dev",
+  "local_state_is_authoritative_for": [
+    "source-code",
+    "tests",
+    "git-history"
+  ],
+  "control_plane_is_authoritative_for": [
+    "portfolio-status",
+    "assignment",
+    "agent-ownership"
+  ]
+}
