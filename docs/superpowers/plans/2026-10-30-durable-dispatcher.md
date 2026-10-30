@@ -52,8 +52,12 @@
 
 - [x] Document exact commands for the disposable proof, explicit admission, supervised native Windows operation without ZBook, rollback, logging, and reconciliation against newer native work.
 - [x] Obtain a fresh independent code review. Fix material findings with failing regressions and run final relevant verification.
-- [ ] Publish only source, safe documentation, and sanitized proof. Preserve immutable source hashes and exact resulting commits. Deliver the verified receipt in the RichieOS report PR without changing canonical state.
+- [x] Publish only source, safe documentation, and sanitized proof. Preserve immutable source hashes and exact resulting commits. Deliver the verified receipt in the RichieOS report PR without changing canonical state.
 
 ## Completion boundary
 
 Pass means verified unattended execution and interruption recovery in this managed Linux environment, with a receipt returned to RichieOS. Home-machine startup, physical Windows/macOS operation, continuous overnight uptime, live queue adoption, and final product approval remain unverified until performed on the actual hosts.
+
+## Delivery checkpoint
+
+Source candidate: https://github.com/RichardRacette/odysseus/pull/11 at 7ec1cc4aaf0dbc086125827406e61d8b8815e1f4 (15 files read back byte-for-byte). RichieOS report: https://github.com/RichardRacette/richieos-control-plane/pull/15 at 9b5267f073a18947bc4ac6fec547e1e97a39d28c (exact report read back; only the permitted report path changed). Full companion verification: 185 tests, 177 passed, 8 skipped; retained final process proof and semantic receipt passed. Runtime implementation is HANDOFF_READY / STOPPED_EDITING. Native deployment remains pending.
