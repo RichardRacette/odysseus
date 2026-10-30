@@ -104,13 +104,14 @@ def validate_payload(kind, payload):
 
 
 class QueueStore:
-    def __init__(self, db_path, nodes: dict, clock=time.time):
+    def __init__(self, db_path, nodes: dict, clock=time.time, *, projects=None):
         if str(db_path) == ":memory:":
             raise PolicyError("The durable queue requires a database file")
         if not isinstance(nodes, dict) or not nodes:
             raise PolicyError("At least one configured node is required")
         self.db_path = Path(db_path).expanduser().resolve()
         self.clock = clock
+        self._projects = projects
         self._nodes = {}
         for node_id, config in nodes.items():
             _bounded_string(node_id, "node id")
@@ -250,6 +251,11 @@ class QueueStore:
             return self._job(self._read(connection, job_id))
 
     def _sweep(self, connection, now):
+        from .dispatch_policy import job_allowed
+        for job in connection.execute("SELECT * FROM jobs WHERE status IN ('queued','running') "
+                                      "AND idempotency_key LIKE 'pf-%'").fetchall():
+            if not job_allowed(connection, job, self._projects):
+                self._cancel_row(connection, job["id"], now)
         expired = connection.execute(
             "SELECT id,attempts,max_attempts FROM jobs WHERE status='running' AND (lease_expires_at<=? OR lease_expires_at IS NULL)",
             (now,),
@@ -319,7 +325,9 @@ class QueueStore:
         _integer(lease_seconds, "lease_seconds", 1, 300)
         with self._transaction() as connection:
             now = self.clock()
-            self._lease(self._read(connection, job_id), node_id, lease_token, now)
+            row = self._read(connection, job_id)
+            self._lease(row, node_id, lease_token, now)
+            self._require_dispatch_scope(connection, row)
             connection.execute("UPDATE jobs SET lease_expires_at=?,updated_at=? WHERE id=?", (now + lease_seconds, now, job_id))
             self._seen(connection, node_id, now)
             return self._job(self._read(connection, job_id))
@@ -332,6 +340,7 @@ class QueueStore:
         with self._transaction() as connection:
             now = self.clock()
             row = self._read(connection, job_id)
+            self._require_dispatch_scope(connection, row)
             if self._replay(row, node_id, lease_token, "complete", digest):
                 return self._job(row)
             self._lease(row, node_id, lease_token, now)
@@ -353,6 +362,7 @@ class QueueStore:
         with self._transaction() as connection:
             now = self.clock()
             row = self._read(connection, job_id)
+            self._require_dispatch_scope(connection, row)
             if self._replay(row, node_id, lease_token, "fail", digest):
                 return self._job(row)
             self._lease(row, node_id, lease_token, now)
@@ -398,6 +408,18 @@ class QueueStore:
                                   "last_seen_at": last_seen, "online": last_seen is not None and now - last_seen < 90}
             return {"nodes": nodes, "jobs": counts}
 
+    def _require_dispatch_scope(self, connection, row):
+        from .dispatch_policy import job_allowed
+        if row is not None and not job_allowed(connection, row, self._projects):
+            raise LeaseError("Dispatcher execution scope is disarmed or revoked")
+
+    @staticmethod
+    def _cancel_row(connection, job_id, now):
+        connection.execute(
+            "UPDATE jobs SET status='cancelled',assigned_node=NULL,lease_token=NULL,lease_expires_at=NULL,updated_at=?,"
+            "last_lease_token=NULL,last_node=NULL,last_action=NULL,last_action_hash=NULL WHERE id=? "
+            "AND status IN ('queued','running')", (now, job_id))
+
     def cancel(self, job_id):
         _bounded_string(job_id, "job id")
         with self._transaction() as connection:
@@ -406,10 +428,7 @@ class QueueStore:
                 raise QueueError("Job not found")
             if row["status"] not in ("queued", "running"):
                 return self._job(row)
-            connection.execute(
-                "UPDATE jobs SET status='cancelled',assigned_node=NULL,lease_token=NULL,lease_expires_at=NULL,updated_at=?,"
-                "last_lease_token=NULL,last_node=NULL,last_action=NULL,last_action_hash=NULL WHERE id=?", (self.clock(), job_id),
-            )
+            self._cancel_row(connection, job_id, self.clock())
             return self._job(self._read(connection, job_id))
 
     def node_seen(self, node_id):

@@ -1,0 +1,11 @@
+# Durable Dispatcher — independent review and fixes
+
+An independent read-only reviewer examined local range `d69f740..c9dc345` and reproduced three Important findings in disposable Linux state. No Critical findings or separate Minor findings were raised. Source acceptance required these fixes; native installation was not approved by the review.
+
+1. **Disarmed queued/running jobs remained executable before coordinator startup.** Added queue-side dispatcher-scope checks at sweep/claim, heartbeat and result acceptance. Existing Factory and hub pass their configured project registrations to the queue. Regression cases restore queued work before any coordinator tick and reject a held claim after registration removal.
+2. **A queue commit before Factory bookkeeping could escape revocation.** Added deterministic Factory idempotency-key matching, including the current retry generation history. Pausing finds committed-but-unlinked jobs; the queue also refuses them after revocation. The regression injects interruption immediately after an actual QueueStore.submit commit, confirms the missing Factory linkage, then proves pause cancels it and claim returns no work.
+3. **Partial publication could conflict with later human approval.** The existing valid evidence file is the selected immutable export transaction. Receipt recovery validates and resumes that file rather than replacing it with a newer approval-stage packet. The regression interrupts after evidence publication, performs a separate Factory approval, reopens the dispatcher and verifies receipt completion without changing the original evidence bytes.
+
+All four new behavioral regressions were observed failing before the fixes and passing afterward. The focused dispatcher suite increased from 16 to 20 passing tests. Full-suite and retained process-proof evidence are recorded in the delivery report.
+
+The reviewer explicitly did not establish Windows locking/ACL behavior, compatibility with unavailable newer native checkpoints, live home services, boot supervision, overnight availability, power-loss durability, or eventual report delivery. These are separate evidence scopes. Report delivery must be established through actual GitHub publication/readback; native and physical checks remain pending.

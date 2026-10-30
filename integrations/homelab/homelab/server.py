@@ -35,7 +35,7 @@ class HubServer(ThreadingHTTPServer):
         self.identities += [(read_token(n['token_file']), 'reader', project) for project, n in config['readers'].items()]
         state = Path(config['state_dir'])
         state.mkdir(parents=True, exist_ok=True, mode=0o700)
-        self.queue = QueueStore(state / 'queue.sqlite3', config['nodes'])
+        self.queue = QueueStore(state / 'queue.sqlite3', config['nodes'], projects=config.get('projects', {}))
         embedder = None
         embedding_config = config.get('embeddings', {})
         if embedding_config.get('enabled', False):

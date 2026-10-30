@@ -1,0 +1,99 @@
+{
+  "boundaries": {
+    "canonical_richieos_state_changed": false,
+    "home_boot_or_overnight_acceptance": "PENDING_HUMAN",
+    "home_services_changed": false,
+    "native_newer_checkpoints_changed": false
+  },
+  "execution_receipt": {
+    "receipt": {
+      "authority": "Verified fixed outputs; authorship, authorization identity and hardware are not attested",
+      "authorization": {
+        "recorded_at": "2026-10-30T05:32:18.542917+00:00",
+        "reference": "owner:20261030:isolated-synthetic"
+      },
+      "evidence_sha256": "f4f18cfd41800488e254f1674371fc73dd3d614884a50892e669925d37f61e51",
+      "factory_status": "review_required",
+      "format": "richieos-execution-receipt",
+      "human_acceptance": "PENDING_HUMAN",
+      "manifest_sha256": "1cf1d64294578687a72278f596f11d209ad3400697a429fdf0dbde8603b5bba3",
+      "mission_id": "durable-dispatch-proof-v1",
+      "physical_nodes_verified": false,
+      "production_deployed": false,
+      "project": "lab",
+      "repository": {
+        "revision": "5581cdd624b9df49efcd4683e60c29d2da80830f",
+        "url": "https://github.com/RichardRacette/odysseus"
+      },
+      "schema_version": 1,
+      "steps": [
+        {
+          "attempts": 2,
+          "input_sha256": "f2f06f8ea8f10aea4102cae7dc65f001985b7e5815324facd8d29c3d54a0edbc",
+          "job_id": "fe0cc39f68244bf39e6bfe2e4946d212",
+          "kind": "text.hash",
+          "result_sha256": "d74e73179118a1ad207d8e6ffe8ca358f1f0ceace8108e14b72a2adfb84efcde",
+          "step_id": "integrity",
+          "verification": "VERIFIED",
+          "worker": "hub"
+        },
+        {
+          "attempts": 1,
+          "input_sha256": "54c380698b91890e03a632f76f7c4b69046df4961be3114631c5a4f4e65f74f9",
+          "job_id": "b8ca4d161cd74c57a88d8ce607383d70",
+          "kind": "json.validate",
+          "result_sha256": "968ba1403e14ea37d90bc550119c02245dac2f243e9ca186ab0e55848a2d6d9c",
+          "step_id": "schema",
+          "verification": "VERIFIED",
+          "worker": "hub"
+        }
+      ],
+      "verification": "VERIFIED"
+    },
+    "sha256": "7eb2501a064f6819b804a37fa2083ae7afaff4a52c6b88694694a162e4c603f9"
+  },
+  "format": "richieos-dispatcher-delivery-evidence",
+  "independent_review": {
+    "critical": 0,
+    "fix_regressions_observed_red_then_green": 4,
+    "important_fixed": 3,
+    "important_found": 3,
+    "minor": 0
+  },
+  "process_proof": {
+    "coordinator_interrupted_and_restarted": true,
+    "evidence_sha256": "f4f18cfd41800488e254f1674371fc73dd3d614884a50892e669925d37f61e51",
+    "format": "richieos-durable-dispatch-proof",
+    "human_acceptance": "PENDING_HUMAN",
+    "integrity_attempts": 2,
+    "logical_jobs": 2,
+    "mission_id": "durable-dispatch-proof-v1",
+    "physical_home_hosts_verified": false,
+    "platform": "linux",
+    "production_deployed": false,
+    "python_version": "3.12.14",
+    "receipt_sha256": "7eb2501a064f6819b804a37fa2083ae7afaff4a52c6b88694694a162e4c603f9",
+    "receipt_stable_after_restart": true,
+    "restore_disarmed": true,
+    "result": "VERIFIED",
+    "schema_attempts": 1,
+    "scope": "Disposable single-host real-HTTP process drill",
+    "stale_result_rejected": true,
+    "steps_verified": 2,
+    "version": 1,
+    "windows_native_verified": false,
+    "worker_interrupted_after_authenticated_claim": true
+  },
+  "published_factory_baseline": "b2691dc31ed0a3a52ac8d4ebdd6aea79eff61d28",
+  "suite": {
+    "failed": 0,
+    "log_sha256": "018efa74f29be98fb98e9c1b56280aa51e1b74ebfbbcad783e34af3d18562e48",
+    "passed": 177,
+    "platform": "linux",
+    "python": "3.12.14",
+    "skipped": 8,
+    "tests_run": 185
+  },
+  "tested_local_code_commit": "61366ad",
+  "version": 1
+}
