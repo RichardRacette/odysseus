@@ -182,7 +182,7 @@ class Factory:
         self.path = Path(config["state_dir"]) / "queue.sqlite3"
         if self.path.is_symlink():
             raise FactoryError("Refusing a symbolic-link queue database")
-        self.queue = QueueStore(self.path, config["nodes"])
+        self.queue = QueueStore(self.path, config["nodes"], projects=config.get("projects", {}))
         with self._db(write=True) as db:
             db.execute("CREATE TABLE IF NOT EXISTS factory_meta (version INTEGER NOT NULL)")
             db.execute("INSERT INTO factory_meta(version) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM factory_meta)",
